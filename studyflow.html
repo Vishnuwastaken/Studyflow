@@ -1,0 +1,1213 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>StudyFlow</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+<style>
+:root{
+  --bg:#f5f7fb; --surface:#ffffff; --surface2:#eef3ff; --text:#16202a; --muted:#6d7888;
+  --accent:#5f7cff; --accent2:#e8edff; --border:#dfe5f0; --success:#22a06b; --successbg:#e9fbf3;
+  --warning:#d89a27; --danger:#d35656; --dangerbg:#fff0f0; --shadow:0 10px 30px rgba(20,32,50,.08);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f141b; --surface:#171d27; --surface2:#1f2940; --text:#edf3fb; --muted:#9ba9bb;
+    --accent:#8399ff; --accent2:#1f2b49; --border:#2b3445; --success:#31b87f; --successbg:#152620;
+    --warning:#dfaa41; --danger:#e06d6d; --dangerbg:#2d1717; --shadow:0 10px 30px rgba(0,0,0,.28);
+  }
+}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif}
+.app{max-width:760px;margin:0 auto;min-height:100vh;padding-bottom:90px}
+header{padding:18px 16px 8px}
+.title{font-size:28px;font-weight:800;letter-spacing:-.03em}
+.subtitle{font-size:13px;color:var(--muted);margin-top:4px}
+main{padding:8px 14px}
+.card,.panel{background:var(--surface);border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow)}
+.card{padding:16px;margin-bottom:14px}
+.panel{padding:14px}
+.h1{font-size:22px;font-weight:800;letter-spacing:-.03em}
+.h2{font-size:18px;font-weight:750;letter-spacing:-.02em}
+.h3{font-size:16px;font-weight:700}
+.small{font-size:13px;color:var(--muted)}
+.tiny{font-size:12px;color:var(--muted)}
+.row{display:flex;gap:10px;align-items:center}
+.row.wrap{flex-wrap:wrap}
+.space{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.list{display:flex;flex-direction:column;gap:10px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px}
+@media (max-width:560px){.grid2,.grid3{grid-template-columns:1fr}}
+button,.btn{appearance:none;border:none;border-radius:14px;padding:13px 15px;font-size:15px;font-weight:700;cursor:pointer;transition:transform .08s ease, opacity .15s ease}
+button:active,.btn:active{transform:scale(.99)}
+.btn{width:100%;background:var(--accent);color:#fff}
+.btn.secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.btn.ghost{background:transparent;color:var(--text);border:1px solid var(--border)}
+.btn.success{background:var(--success);color:#fff}
+.btn.warning{background:var(--warning);color:#fff}
+.btn.danger{background:var(--danger);color:#fff}
+.btn.inline{width:auto}
+input,textarea,select{width:100%;padding:13px 14px;border-radius:14px;border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:15px}
+textarea{min-height:100px;resize:vertical}
+.progress{height:10px;background:var(--surface2);border:1px solid var(--border);border-radius:999px;overflow:hidden}
+.progress>div{height:100%;background:var(--accent)}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:var(--surface2);border:1px solid var(--border);font-size:12px;color:var(--muted)}
+.badge{display:inline-flex;padding:6px 9px;border-radius:999px;background:var(--accent2);color:var(--accent);font-size:12px;font-weight:700}
+.empty{text-align:center;padding:24px 14px;border:1px dashed var(--border);border-radius:18px;color:var(--muted)}
+.flashcard{min-height:280px;padding:24px;border-radius:24px;border:1px solid var(--border);display:flex;align-items:center;justify-content:center;text-align:center;background:linear-gradient(180deg,var(--surface),color-mix(in srgb, var(--surface) 84%, var(--accent2)));box-shadow:var(--shadow);font-size:24px;font-weight:800;letter-spacing:-.03em;line-height:1.25}
+.flashcard.flipped{background:linear-gradient(180deg,var(--surface),color-mix(in srgb, var(--surface) 84%, var(--successbg)))}
+.nav{position:fixed;left:0;right:0;bottom:0;padding:10px 12px 14px;background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--bg) 88%, transparent) 30%,var(--bg))}
+.nav-inner{max-width:760px;margin:0 auto;display:grid;grid-template-columns:repeat(4,1fr);gap:8px;padding:8px;border-radius:20px;background:color-mix(in srgb,var(--surface) 92%, transparent);border:1px solid var(--border);box-shadow:var(--shadow);backdrop-filter:blur(14px)}
+.nav button{background:transparent;color:var(--muted)}
+.nav button.active{background:var(--accent2);color:var(--accent)}
+.toast{position:fixed;left:50%;bottom:94px;transform:translateX(-50%);padding:11px 14px;border-radius:14px;background:var(--text);color:var(--bg);box-shadow:var(--shadow);opacity:0;pointer-events:none;transition:.18s;z-index:50}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-4px)}
+.reward{display:inline-flex;padding:9px 12px;border-radius:12px;background:var(--accent2);color:var(--accent);font-weight:800}
+.quiz-option.correct{background:var(--successbg)!important;color:var(--text)!important;border:2px solid var(--success)!important}
+.quiz-option.wrong{background:var(--dangerbg)!important;color:var(--text)!important;border:2px solid var(--danger)!important}
+.pet-wrap{display:flex;align-items:center;justify-content:center}
+.pet{position:relative;width:86px;height:86px}
+.pet.big{width:170px;height:170px}
+.pet-body{position:absolute;left:50%;top:50%;transform:translate(-50%,-45%);width:64px;height:56px;border-radius:50% 50% 42% 42%;background:var(--pet-color,#8cc8ff);border:2px solid #526377}
+.pet.big .pet-body{width:118px;height:104px;border-width:3px}
+.ear{position:absolute;width:15px;height:18px;background:var(--pet-color,#8cc8ff);border:2px solid #526377;border-radius:60% 60% 20% 20%;top:14px}
+.ear.left{left:18px;transform:rotate(-18deg)} .ear.right{right:18px;transform:rotate(18deg)}
+.pet.big .ear{width:28px;height:34px;top:28px;border-width:3px}.pet.big .ear.left{left:34px}.pet.big .ear.right{right:34px}
+.eye{position:absolute;width:5px;height:6px;background:#1b2635;border-radius:50%;top:39px}
+.eye.left{left:34px}.eye.right{right:34px}
+.pet.big .eye{width:10px;height:12px;top:73px}.pet.big .eye.left{left:63px}.pet.big .eye.right{right:63px}
+.mouth{position:absolute;left:50%;top:49px;transform:translateX(-50%);width:14px;height:7px;border-bottom:2px solid #1b2635;border-radius:0 0 18px 18px}
+.pet.big .mouth{top:92px;width:26px;height:12px;border-bottom-width:3px}
+.hat{position:absolute;left:50%;top:8px;transform:translateX(-50%);width:34px;height:10px;background:#f3c95e;border-radius:12px 12px 6px 6px;border:2px solid #996f1b}
+.hat:after{content:'';position:absolute;left:50%;transform:translateX(-50%);top:-10px;width:18px;height:12px;background:#f3c95e;border:2px solid #996f1b;border-bottom:none;border-radius:12px 12px 0 0}
+.pet.big .hat{width:66px;height:20px;top:14px;border-width:3px}.pet.big .hat:after{width:36px;height:24px;top:-20px;border-width:3px}
+.glasses{position:absolute;left:50%;top:35px;transform:translateX(-50%);width:38px;height:10px}
+.glasses:before,.glasses:after{content:'';position:absolute;width:12px;height:9px;border:2px solid #526377;border-radius:4px;top:0}
+.glasses:before{left:4px}.glasses:after{right:4px}
+.glasses i{position:absolute;left:50%;top:4px;transform:translateX(-50%);width:6px;height:2px;background:#526377}
+.pet.big .glasses{top:68px;width:74px;height:18px}.pet.big .glasses:before,.pet.big .glasses:after{width:24px;height:18px;border-width:3px;border-radius:8px}.pet.big .glasses i{top:7px;width:12px;height:3px}
+.file-chip{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 12px;border-radius:14px;background:var(--surface2);border:1px solid var(--border)}
+.icon{width:34px;height:34px;border-radius:10px;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:18px}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="title">StudyFlow</div>
+    <div class="subtitle">Study first. Gentle motivation built in.</div>
+  </header>
+  <main id="app"></main>
+</div>
+<div class="nav">
+  <div class="nav-inner">
+    <button id="nav-home" onclick="navigate('home')">Home</button>
+    <button id="nav-decks" onclick="navigate('decks')">Decks</button>
+    <button id="nav-study" onclick="navigate('study')">Study</button>
+    <button id="nav-pet" onclick="navigate('pet')">Pet</button>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+
+<script>
+(() => {
+const STORAGE = 'studyflow_phase2_v1';
+const STARTERS = [
+  {id:'starter-spanish', starter:true, name:'Spanish Basics', description:'Core beginner vocabulary.', cards:[
+    ['Hola','Hello'], ['Gracias','Thank you'], ['Por favor','Please'], ['¿Cómo estás?','How are you?'], ['Buenos días','Good morning'], ['Agua','Water'], ['Comida','Food'], ['¿Dónde está el baño?','Where is the bathroom?']
+  ]},
+  {id:'starter-biology', starter:true, name:'Biology Fundamentals', description:'Cells, genetics, and core biology.', cards:[
+    ['What is the basic unit of life?','The cell.'], ['What does DNA stand for?','Deoxyribonucleic acid.'], ['What organelle is the powerhouse of the cell?','The mitochondrion.'], ['What process do plants use to make food?','Photosynthesis.'], ['What is homeostasis?','Maintaining a stable internal environment.'], ['What carries genetic information?','Genes made of DNA.']
+  ]},
+  {id:'starter-capitals', starter:true, name:'World Capitals', description:'Popular country and capital pairs.', cards:[
+    ['Capital of France','Paris'], ['Capital of Japan','Tokyo'], ['Capital of Brazil','Brasília'], ['Capital of Canada','Ottawa'], ['Capital of Australia','Canberra'], ['Capital of Kenya','Nairobi'], ['Capital of Egypt','Cairo']
+  ]}
+];
+const ITEMS = [
+  {id:'hat_sun', name:'Sunny Hat', category:'hat', price:25, icon:'🎩'},
+  {id:'glasses_round', name:'Round Glasses', category:'face', price:40, icon:'👓'},
+  {id:'color_mint', name:'Mint Color', category:'color', price:30, icon:'🟢', color:'#9fe6c1'},
+  {id:'color_peach', name:'Peach Color', category:'color', price:45, icon:'🟠', color:'#ffc89e'}
+];
+
+const uid = p => `${p}-${Math.random().toString(36).slice(2,10)}`;
+const esc = s => String(s || '').replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[m]));
+const today = () => {
+  const d = new Date();
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0,10);
+};
+const addDays = (dateStr, n) => {
+  const d = new Date(dateStr + 'T00:00:00');
+  d.setDate(d.getDate() + n);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).toISOString().slice(0,10);
+};
+const xpForLevel = level => 60 + (level - 1) * 35;
+const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
+const shorten = (s, n) => clean(s).length > n ? clean(s).slice(0, n - 1).trim() + '…' : clean(s);
+
+function seedDeck(t){
+  return {
+    id:t.id, starter:true, archived:false, name:t.name, description:t.description, createdAt:Date.now(), updatedAt:Date.now(), files:[],
+    cards:t.cards.map(c => ({
+      id:uid('card'), front:c[0], back:c[1], archived:false,
+      stats:{easy:0, medium:0, hard:0, reviews:0, mastered:false, nextReview:today()}
+    }))
+  };
+}
+function defaultState(){
+  return {
+    user:{
+      daily:{date:today(), studied:0},
+      streak:{current:0, lastStudyDate:null},
+      points:0,
+      achievements:{streak3:false, cards50:false, masterDeck:false}
+    },
+    pet:{
+      name:'Pebble',
+      level:1,
+      xp:0,
+      mood:'calm',
+      lastMoodAt:Date.now(),
+      inventory:[],
+      equipped:{hat:null, face:null, color:null}
+    },
+    starterDecks: STARTERS.map(seedDeck),
+    decks: [],
+    sessions: {recent:null}
+  };
+}
+function normalizeDeck(d){
+  return {
+    id:d.id || uid('deck'),
+    starter:!!d.starter,
+    archived:!!d.archived,
+    name:d.name || 'Untitled Deck',
+    description:d.description || '',
+    createdAt:d.createdAt || Date.now(),
+    updatedAt:d.updatedAt || Date.now(),
+    files:(d.files || []).map(f => ({id:f.id || uid('file'), name:f.name || 'Imported file', type:f.type || 'File', importedAt:f.importedAt || Date.now(), archived:!!f.archived})),
+    cards:(d.cards || []).map(c => ({
+      id:c.id || uid('card'),
+      front:c.front || '',
+      back:c.back || '',
+      archived:!!c.archived,
+      stats:Object.assign({easy:0, medium:0, hard:0, reviews:0, mastered:false, nextReview:today()}, c.stats || {})
+    }))
+  };
+}
+function load(){
+  try{
+    const raw = JSON.parse(localStorage.getItem(STORAGE));
+    if(!raw) return defaultState();
+    return {
+      user:Object.assign(defaultState().user, raw.user || {}),
+      pet:Object.assign(defaultState().pet, raw.pet || {}),
+      starterDecks:Array.isArray(raw.starterDecks) && raw.starterDecks.length ? raw.starterDecks.map(normalizeDeck) : defaultState().starterDecks,
+      decks:Array.isArray(raw.decks) ? raw.decks.map(normalizeDeck) : [],
+      sessions:raw.sessions || {recent:null}
+    };
+  }catch{
+    return defaultState();
+  }
+}
+let state = load();
+let route = 'home';
+let rewardNotice = null;
+let study = {cards:[], index:0, flipped:false, mode:'flashcard', results:{studied:0, correct:0, xp:0, points:0, unlocks:[]}, options:[]};
+
+const app = document.getElementById('app');
+const findDeck = id => state.decks.find(d => d.id === id) || state.starterDecks.find(d => d.id === id);
+const allDecks = () => [...state.decks, ...state.starterDecks];
+const visibleDecks = () => allDecks().filter(d => !d.archived);
+const activeCards = deck => (deck.cards || []).filter(c => !c.archived);
+const activeFiles = deck => (deck.files || []).filter(f => !f.archived);
+const dueCards = deck => activeCards(deck).filter(c => (c.stats.nextReview || today()) <= today());
+const canEdit = deck => state.decks.some(d => d.id === deck.id);
+const recentDeck = () => findDeck(state.sessions.recent?.deckId || '');
+const petColor = () => ITEMS.find(i => i.id === state.pet.equipped.color)?.color || '#8cc8ff';
+const petMood = () => state.pet.mood === 'excited' ? 'Excited' : state.pet.mood === 'happy' ? 'Happy' : 'Calm';
+function save(){ localStorage.setItem(STORAGE, JSON.stringify(state)); }
+function toast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 1800);
+}
+function setNav(){
+  ['home','decks','study','pet'].forEach(p => document.getElementById('nav-' + p).classList.toggle('active', route === p));
+}
+function normalizeDay(){
+  if(state.user.daily.date !== today()){
+    state.user.daily = {date:today(), studied:0};
+    save();
+  }
+}
+function updatePetMood(){
+  if(Date.now() - state.pet.lastMoodAt > 60000 && state.pet.mood === 'excited') state.pet.mood = 'happy';
+  if(Date.now() - state.pet.lastMoodAt > 120000 && state.pet.mood === 'happy') state.pet.mood = 'calm';
+}
+function renderPet(big=false){
+  const hat = state.pet.equipped.hat ? '<div class="hat"></div>' : '';
+  const glasses = state.pet.equipped.face ? '<div class="glasses"><i></i></div>' : '';
+  return `
+    <div class="pet-wrap">
+      <div class="pet ${big ? 'big' : ''}" style="--pet-color:${petColor()}">
+        <div class="ear left"></div><div class="ear right"></div><div class="pet-body"></div>${hat}${glasses}
+        <div class="eye left"></div><div class="eye right"></div><div class="mouth"></div>
+      </div>
+    </div>
+  `;
+}
+function deckProgress(deck){
+  const cards = activeCards(deck);
+  if(!cards.length) return 0;
+  let total = 0;
+  cards.forEach(c => {
+    const s = c.stats || {};
+    total += Math.max(0, Math.min(6, (s.easy || 0) * 2 + (s.medium || 0) - (s.hard || 0)));
+  });
+  return Math.round(total / (cards.length * 6) * 100);
+}
+function masteredPct(deck){
+  const cards = activeCards(deck);
+  return cards.length ? Math.round(cards.filter(c => c.stats.mastered).length / cards.length * 100) : 0;
+}
+function rewardHtml(){
+  return rewardNotice ? `<div class="row wrap" style="margin-top:12px"><div class="reward">+${rewardNotice.xp} XP</div><div class="reward">+${rewardNotice.points} Points</div></div>` : '';
+}
+function addXP(n){
+  state.pet.xp += n;
+  while(state.pet.xp >= xpForLevel(state.pet.level)){
+    state.pet.xp -= xpForLevel(state.pet.level);
+    state.pet.level++;
+    state.pet.mood = 'excited';
+    state.pet.lastMoodAt = Date.now();
+    toast('Pet leveled up');
+  }
+}
+function updateStreak(){
+  const y = addDays(today(), -1);
+  const last = state.user.streak.lastStudyDate;
+  if(last === today()) return false;
+  state.user.streak.current = (last === y) ? state.user.streak.current + 1 : 1;
+  state.user.streak.lastStudyDate = today();
+  if(state.user.streak.current >= 3 && !state.user.achievements.streak3){
+    state.user.achievements.streak3 = true;
+    state.user.points += 30;
+    addXP(20);
+    return '3-day streak';
+  }
+  return false;
+}
+function award(cardsCount, sessionDone){
+  const xp = cardsCount * 5 + (sessionDone ? 10 : 0);
+  const points = cardsCount * 3 + (sessionDone ? 6 : 0);
+  state.user.points += points;
+  addXP(xp);
+  study.results.xp += xp;
+  study.results.points += points;
+  rewardNotice = {xp, points};
+  const unlock = updateStreak();
+  if(unlock) study.results.unlocks.push(unlock);
+  const totalReviews = allDecks().flatMap(d => d.cards).reduce((n, c) => n + (c.stats.reviews || 0), 0);
+  if(totalReviews >= 50 && !state.user.achievements.cards50){
+    state.user.achievements.cards50 = true;
+    state.user.points += 40;
+    addXP(25);
+    study.results.unlocks.push('50 cards studied');
+  }
+  const mastered = allDecks().some(d => activeCards(d).length && activeCards(d).every(c => c.stats.mastered));
+  if(mastered && !state.user.achievements.masterDeck){
+    state.user.achievements.masterDeck = true;
+    state.user.points += 50;
+    addXP(30);
+    study.results.unlocks.push('Mastered a deck');
+  }
+  state.pet.mood = sessionDone ? 'excited' : 'happy';
+  state.pet.lastMoodAt = Date.now();
+}
+function updateCardSchedule(card, rating){
+  card.stats[rating] = (card.stats[rating] || 0) + 1;
+  card.stats.reviews = (card.stats.reviews || 0) + 1;
+  card.stats.nextReview = rating === 'hard' ? today() : rating === 'medium' ? addDays(today(), 2) : addDays(today(), 4);
+  card.stats.mastered = (card.stats.easy >= 3) && (card.stats.easy > card.stats.hard);
+}
+function render(){
+  normalizeDay();
+  updatePetMood();
+  setNav();
+  if(route === 'home') return renderHome();
+  if(route === 'decks') return renderDecks();
+  if(route === 'study') return renderStudyHub();
+  return renderPetPage();
+}
+window.navigate = function(page){
+  route = page;
+  rewardNotice = null;
+  
+window.archiveDeck = function(id){
+  const d = findDeck(id);
+  if(!d) return;
+  d.archived = true;
+  save();
+  renderDecks();
+};
+
+window.showArchive = function(){
+  const archived = allDecks().filter(d=>d.archived);
+  app.innerHTML = `
+    <div class="card">
+      <div class="h1">Archived Decks</div>
+      <button class="btn secondary inline" onclick="navigate('decks')">Back</button>
+    </div>
+    ${archived.length ? `<div class="list">${archived.map(d=>`
+      <div class="panel">
+        <div class="space">
+          <div>
+            <div class="h3">${esc(d.name)}</div>
+            <div class="small">${activeCards(d).length} cards</div>
+          </div>
+          <div class="row">
+            <button class="btn secondary inline" onclick="restoreDeck('${d.id}')">Restore</button>
+            <button class="btn danger inline" onclick="deleteArchived('${d.id}')">Delete</button>
+          </div>
+        </div>
+      </div>
+    `).join('')}</div>` : `<div class="empty">No archived decks.</div>`}
+  `;
+};
+
+window.restoreDeck = function(id){
+  const d = findDeck(id);
+  if(!d) return;
+  d.archived = false;
+  save();
+  showArchive();
+};
+
+window.deleteArchived = function(id){
+  if(!confirm('Are you sure you want to delete this permanently?')) return;
+  state.decks = state.decks.filter(d=>d.id!==id);
+  state.starterDecks = state.starterDecks.filter(d=>d.id!==id);
+  save();
+  showArchive();
+};
+
+render();
+};
+
+function renderHome(){
+  const d = recentDeck();
+  const xp = xpForLevel(state.pet.level);
+  app.innerHTML = `
+    <div class="card">
+      <div class="space">
+        <div>
+          <div class="h1">Welcome back</div>
+          <div class="small">Ready to keep your streak going?</div>
+        </div>
+        ${renderPet(false)}
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="h2">Continue Studying</div>
+      <div class="small" style="margin-top:6px">${d ? esc(d.name) : 'Pick a deck to begin'}</div>
+      <button class="btn" style="margin-top:12px" onclick="${d ? `startStudy('${d.id}','flashcard','resume')` : `navigate('study')`}">${d ? 'Resume Last Session' : 'Start Studying'}</button>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <div class="small">Daily progress</div>
+        <div class="h1" style="margin-top:6px">${state.user.daily.studied} cards</div>
+        <div style="height:10px"></div>
+        <div class="progress"><div style="width:${Math.min(100, state.user.daily.studied * 10)}%"></div></div>
+      </div>
+      <div class="card">
+        <div class="small">Current streak</div>
+        <div class="h1" style="margin-top:6px">${state.user.streak.current} day${state.user.streak.current === 1 ? '' : 's'}</div>
+        <div class="tiny" style="margin-top:10px">Stay consistent, you're doing great.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="space">
+        <div>
+          <div class="h2">${esc(state.pet.name)} · Level ${state.pet.level}</div>
+          <div class="small">${petMood()} mood</div>
+        </div>
+        <button class="btn secondary inline" onclick="navigate('pet')">Pet</button>
+      </div>
+      <div style="height:12px"></div>
+      <div class="progress"><div style="width:${Math.round(state.pet.xp / xp * 100)}%"></div></div>
+      <div class="tiny" style="margin-top:8px">${state.pet.xp} / ${xp} XP to next level</div>
+    </div>
+  `;
+}
+
+function deckCard(d){
+  return `
+    <div class="panel">
+      <div class="space">
+        <div>
+          <div class="row wrap">
+            <div class="h3">${esc(d.name)}</div>
+            ${d.starter ? '<span class="badge">Starter</span>' : ''}
+          </div>
+          <div class="small">${activeCards(d).length} cards · ${dueCards(d).length} due today</div>
+        </div>
+        <button class="btn inline" onclick="openDeck('${d.id}')">Open</button>     <button class="btn ghost inline" onclick="archiveDeck('${d.id}')">Archive</button>
+      </div>
+      <div style="height:10px"></div>
+      <div class="progress"><div style="width:${deckProgress(d)}%"></div></div>
+      <div class="space" style="margin-top:8px">
+        <div class="tiny">${deckProgress(d)}% known</div>
+        <div class="tiny">${masteredPct(d)}% mastered</div>
+      </div>
+    </div>
+  `;
+}
+function renderDecks(){
+  let my = state.decks.filter(d => !d.archived);
+const q = (document.getElementById('deck-search')?.value || '').toLowerCase();
+if(q) my = my.filter(d=>d.name.toLowerCase().includes(q));
+const sort = document.getElementById('deck-sort')?.value;
+if(sort==='name') my.sort((a,b)=>a.name.localeCompare(b.name));
+if(sort==='progress') my.sort((a,b)=>deckProgress(b)-deckProgress(a));
+
+  const starters = state.starterDecks.filter(d => !d.archived);
+  app.innerHTML = `
+    <div class="card">
+      <div class="h1">Decks</div>
+      <div class="small" style="margin-top:6px">Create, import, edit, and organize your study material.</div><input id="deck-search" placeholder="Search decks" oninput="renderDecks()"><select id="deck-sort" onchange="renderDecks()"><option value="recent">Recent</option><option value="name">Name</option><option value="progress">Progress</option></select>      <button class="btn ghost inline" onclick="showArchive()">View Archive</button></div>
+      <div style="height:12px"></div>
+      <div class="grid3">
+        <button class="btn" onclick="showCreateDeck()">Create Deck</button>
+        <button class="btn secondary" onclick="showImportDeck()">Import File</button>
+        <button class="btn secondary" onclick="showPasteText()">Paste Text</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="h2">My Decks</div>
+      <div style="height:10px"></div>
+      ${my.length ? `<div class="list">${my.map(deckCard).join('')}</div>` : `<div class="empty">No personal decks yet.</div>`}
+    </div>
+
+    <div class="card">
+      <div class="h2">Starter Decks</div>
+      <div style="height:10px"></div>
+      ${starters.length ? `<div class="list">${starters.map(deckCard).join('')}</div>` : `<div class="empty">No starter decks available.</div>`}
+    </div>
+  `;
+}
+
+window.showCreateDeck = function(){
+  app.innerHTML = `
+    <div class="card">
+      <div class="h1">Create Deck</div>
+      <div style="height:12px"></div>
+      <input id="deck-name" placeholder="Deck name">
+      <textarea id="deck-desc" placeholder="Short description (optional)"></textarea>
+      <div class="grid2">
+        <button class="btn" onclick="createDeck()">Create</button>
+        <button class="btn secondary" onclick="navigate('decks')">Cancel</button>
+      </div>
+    </div>
+  `;
+};
+window.createDeck = function(){
+  const name = document.getElementById('deck-name').value.trim();
+  const desc = document.getElementById('deck-desc').value.trim();
+  if(!name) return toast('Give your deck a name');
+  const deck = {id:uid('deck'), starter:false, archived:false, name, description:desc, createdAt:Date.now(), updatedAt:Date.now(), files:[], cards:[]};
+  state.decks.unshift(deck);
+  save();
+  openDeck(deck.id);
+};
+window.showPasteText = function(){
+  app.innerHTML = `
+    <div class="card">
+      <div class="h1">Paste Text</div>
+      <div class="small" style="margin-top:6px">Turn notes into short draft cards you can edit before saving.</div>
+      <div style="height:12px"></div>
+      <input id="paste-name" placeholder="New deck name">
+      <textarea id="paste-body" placeholder="Paste your notes here"></textarea>
+      <div class="grid2">
+        <button class="btn" onclick="processPastedText()">Create Draft Cards</button>
+        <button class="btn secondary" onclick="navigate('decks')">Cancel</button>
+      </div>
+    </div>
+  `;
+};
+window.processPastedText = function(){
+  const name = document.getElementById('paste-name').value.trim() || 'Imported Notes';
+  const text = document.getElementById('paste-body').value.trim();
+  if(!text) return toast('Paste some text first');
+  const result = analyzeText(text);
+  showDraftReview({name, source:'Pasted text', summary:result.summary, drafts:result.cards, targetDeckId:null, fileMeta:null});
+};
+window.showImportDeck = function(targetId=''){
+  app.innerHTML = `
+    <div class="card">
+      <div class="h1">Import from File</div>
+      <div class="small" style="margin-top:6px">Supports PDF, TXT, and DOCX.</div>
+      <div style="height:12px"></div>
+      ${targetId ? '' : '<input id="import-name" placeholder="New deck name">'}
+      <input id="file-input" type="file" accept=".pdf,.txt,.docx,.md,.csv,.text">
+      <div class="grid2" style="margin-top:12px">
+        <button class="btn" onclick="processFile('${targetId}')">Create Draft Cards</button>
+        <button class="btn secondary" onclick="${targetId ? `openDeck('${targetId}')` : `navigate('decks')`}">Cancel</button>
+      </div>
+    </div>
+  `;
+};
+window.processFile = async function(targetId=''){
+  const file = document.getElementById('file-input').files[0];
+  if(!file) return toast('Choose a file first');
+  const name = targetId ? (findDeck(targetId)?.name || 'Imported Deck') : (document.getElementById('import-name')?.value.trim() || file.name.replace(/\.[^.]+$/, ''));
+  try{
+    toast('Reading file…');
+    const text = await readFileText(file);
+    if(!text.trim()) throw new Error('No readable text found');
+    const result = analyzeText(text);
+    showDraftReview({
+      name, source:file.name, summary:result.summary, drafts:result.cards, targetDeckId:targetId || null,
+      fileMeta:{id:uid('file'), name:file.name, type:file.type || file.name.split('.').pop().toUpperCase(), importedAt:Date.now(), archived:false}
+    });
+  }catch(err){
+    toast(err.message || 'Could not read that file');
+  }
+};
+async function readFileText(file){
+  const ext = (file.name.split('.').pop() || '').toLowerCase();
+  if(ext === 'pdf'){
+    const buf = await file.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({data:buf}).promise;
+    let text = '';
+    for(let i=1;i<=pdf.numPages;i++){
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      text += content.items.map(it => it.str).join(' ') + '\\n';
+    }
+    return text;
+  }
+  if(ext === 'docx'){
+    const buf = await file.arrayBuffer();
+    const res = await mammoth.extractRawText({arrayBuffer:buf});
+    return res.value || '';
+  }
+  return await file.text();
+}
+function analyzeText(text){
+  const raw = text.replace(/\r/g,'\n').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+  const lines = raw.split('\n').map(s => s.trim()).filter(Boolean);
+  const sents = raw.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
+  const cards = [];
+  const seen = new Set();
+  function push(front, back){
+    front = shorten(front, 100);
+    back = shorten(back, 150);
+    const key = (front + '|' + back).toLowerCase();
+    if(!front || !back || seen.has(key)) return;
+    seen.add(key);
+    cards.push({front, back});
+  }
+  for(let i=0;i<lines.length-1;i++){
+    if(/^(q|question)[:\-]/i.test(lines[i]) && /^(a|answer)[:\-]/i.test(lines[i+1])){
+      push(lines[i].replace(/^(q|question)[:\-]\s*/i,''), lines[i+1].replace(/^(a|answer)[:\-]\s*/i,''));
+      i++;
+    }
+  }
+  for(const line of lines){
+    const m = line.match(/^(.{2,70}?)(?:\s*[:\-–]\s*)(.{8,220})$/);
+    if(m) push(`What is ${clean(m[1])}?`, m[2]);
+  }
+  if(cards.length < 4){
+    sents.filter(s => s.length > 25 && s.length < 170).slice(0,30).forEach(s => {
+      push(`Explain: ${shorten(s.split(' ').slice(0,6).join(' '), 44)}`, s);
+    });
+  }
+  const summary = shorten(sents.filter(s => s.length > 40 && s.length < 170).slice(0,2).join(' ') || raw, 260);
+  return {summary, cards:cards.slice(0,50)};
+}
+function showDraftReview({name, source, summary, drafts, targetDeckId, fileMeta}){
+  const rows = drafts.length ? drafts : [{front:'Review this imported text', back:'Edit this draft and add more cards.'}];
+  app.innerHTML = `
+    <div class="card">
+      <div class="space">
+        <div>
+          <div class="h1">Review Draft Cards</div>
+          <div class="small">${esc(source)} · ${rows.length} draft cards</div>
+        </div>
+        <button class="btn secondary inline" onclick="${targetDeckId ? `openDeck('${targetDeckId}')` : `navigate('decks')`}">Close</button>
+      </div>
+      <div style="height:12px"></div>
+      <div class="card" style="margin:0;box-shadow:none">
+        <div class="h3">Here’s what this file is about</div>
+        <div class="small" style="margin-top:8px">${esc(summary)}</div>
+      </div>
+      <div style="height:12px"></div>
+      <input id="draft-name" value="${esc(name).replace(/"/g,'&quot;')}">
+      <div style="height:12px"></div>
+      <div id="draft-list" class="list">
+        ${rows.map((r,i) => `
+          <div class="panel" data-row="${i}">
+            <div class="small">Draft ${i + 1}</div>
+            <input class="draft-front" value="${esc(r.front).replace(/"/g,'&quot;')}" placeholder="Front">
+            <textarea class="draft-back" placeholder="Back">${esc(r.back)}</textarea>
+            <button class="btn ghost inline" onclick="removeDraft(this)">Delete</button>
+          </div>
+        `).join('')}
+      </div>
+      <div style="height:12px"></div>
+      <div class="grid2">
+        <button class="btn secondary" onclick="addDraft()">Add Card</button>
+        <button class="btn" onclick='saveDrafts(${JSON.stringify(targetDeckId || "")}, ${JSON.stringify(fileMeta)})'>${targetDeckId ? 'Save to Deck' : 'Create Deck and Save'}</button>
+      </div>
+    </div>
+  `;
+}
+window.addDraft = function(){
+  const list = document.getElementById('draft-list');
+  const div = document.createElement('div');
+  div.innerHTML = `
+    <div class="panel" data-row="x">
+      <div class="small">Draft</div>
+      <input class="draft-front" placeholder="Front">
+      <textarea class="draft-back" placeholder="Back"></textarea>
+      <button class="btn ghost inline" onclick="removeDraft(this)">Delete</button>
+    </div>
+  `;
+  list.appendChild(div.firstElementChild);
+};
+window.removeDraft = function(btn){
+  btn.closest('[data-row]').remove();
+};
+window.saveDrafts = function(targetId, fileMeta){
+  const rows = [...document.querySelectorAll('[data-row]')].map(r => ({
+    front:r.querySelector('.draft-front').value.trim(),
+    back:r.querySelector('.draft-back').value.trim()
+  })).filter(r => r.front && r.back);
+  if(!rows.length) return toast('Keep at least one complete card');
+  let deck;
+  if(targetId){
+    deck = state.decks.find(d => d.id === targetId);
+    if(!deck) return toast('That deck is not editable');
+  }else{
+    deck = {id:uid('deck'), starter:false, archived:false, name:document.getElementById('draft-name').value.trim() || 'Imported Deck', description:'Created from imported content', createdAt:Date.now(), updatedAt:Date.now(), files:[], cards:[]};
+    state.decks.unshift(deck);
+  }
+  rows.forEach(r => deck.cards.push({id:uid('card'), front:r.front, back:r.back, archived:false, stats:{easy:0, medium:0, hard:0, reviews:0, mastered:false, nextReview:today()}}));
+  if(fileMeta) deck.files.unshift(fileMeta);
+  deck.updatedAt = Date.now();
+  save();
+  openDeck(deck.id);
+};
+window.openDeck = function(id){
+  const d = findDeck(id);
+  if(!d || d.archived) return renderDecks();
+  const editable = canEdit(d);
+  const cards = activeCards(d);
+  const files = activeFiles(d);
+  app.innerHTML = `
+    <div class="card">
+      <div class="space">
+        <div>
+          <div class="row wrap">
+            <div class="h1">${esc(d.name)}</div>
+            ${d.starter ? '<span class="badge">Starter</span>' : ''}
+          </div>
+          <div class="small">${esc(d.description || 'Simple flashcards for quick study.')}</div>
+        </div>
+        <button class="btn secondary inline" onclick="navigate('decks')">Back</button>
+      </div>
+      <div style="height:12px"></div>
+      <div class="grid2">
+        <button class="btn" onclick="startStudy('${d.id}','flashcard')">Flashcard Mode</button>
+        <button class="btn secondary" onclick="startStudy('${d.id}','quiz')">Quiz Mode</button>
+      </div>
+      <div style="height:10px"></div>
+      <div class="grid2">
+        ${d.starter ? `
+          <button class="btn secondary" onclick="copyStarter('${d.id}')">Save as My Deck</button>
+          <button class="btn ghost" onclick="toast('Copy the starter deck first to edit it')">Import into New Deck</button>
+        ` : `
+          <button class="btn secondary" onclick="showAddCard('${d.id}')">Add Cards Manually</button>
+          <button class="btn ghost" onclick="showImportDeck('${d.id}')">Import from File</button>
+        `}
+      </div>
+      ${editable ? `
+      <div style="height:10px"></div>
+      <div class="grid2">
+        <button class="btn ghost" onclick="duplicateDeck('${d.id}')">Duplicate Deck</button>
+        <button class="btn danger" onclick="deleteDeck('${d.id}')">Delete Deck</button>
+      </div>` : ''}
+      <div style="height:12px"></div>
+      <div class="h2">Files</div>
+      <div style="height:10px"></div>
+      ${files.length ? `<div class="list">${files.map(f => `
+        <div class="file-chip">
+          <div>
+            <div class="h3">${esc(f.name)}</div>
+            <div class="small">${esc(f.type)}</div>
+          </div>
+          ${editable ? `<button class="btn ghost inline" onclick="deleteFile('${d.id}','${f.id}')">Delete</button>` : `<span class="badge">Read only</span>`}
+        </div>`).join('')}</div>` : `<div class="empty">No imported files yet.</div>`}
+      <div style="height:12px"></div>
+      <div class="h2">Cards</div>
+      <div style="height:10px"></div>
+      ${cards.length ? `<div class="list">${cards.map(c => `
+        <div class="panel">
+          <div class="h3">${esc(c.front)}</div>
+          <div class="small" style="margin-top:6px">${esc(c.back)}</div>
+          <div class="row wrap" style="margin-top:10px">
+            <button class="btn secondary inline" onclick="speakText(${JSON.stringify(c.front)})">Play Question</button>
+            <button class="btn secondary inline" onclick="speakText(${JSON.stringify(c.back)})">Play Answer</button>
+            ${editable ? `
+              <button class="btn secondary inline" onclick="showEditCard('${d.id}','${c.id}')">Edit</button>
+              <button class="btn ghost inline" onclick="archiveCard('${d.id}','${c.id}')">Delete</button>
+            ` : ''}
+          </div>
+        </div>
+      `).join('')}</div>` : `<div class="empty">No cards yet.</div>`}
+    </div>
+  `;
+};
+window.copyStarter = function(id){
+  const d = state.starterDecks.find(x => x.id === id);
+  if(!d) return;
+  const copy = JSON.parse(JSON.stringify(d));
+  copy.id = uid('deck');
+  copy.starter = false;
+  copy.name = d.name + ' (Copy)';
+  copy.createdAt = Date.now();
+  copy.updatedAt = Date.now();
+  copy.files = [];
+  copy.cards = copy.cards.map(c => ({...c, id:uid('card'), archived:false, stats:{easy:0, medium:0, hard:0, reviews:0, mastered:false, nextReview:today()}}));
+  state.decks.unshift(copy);
+  save();
+  openDeck(copy.id);
+};
+window.showAddCard = function(id){
+  app.innerHTML = `
+    <div class="card">
+      <div class="h1">Add Cards Manually</div>
+      <div style="height:12px"></div>
+      <input id="card-front" placeholder="Front of card">
+      <textarea id="card-back" placeholder="Back of card"></textarea>
+      <div class="grid2">
+        <button class="btn" onclick="addCard('${id}', true)">Save and Add Another</button>
+        <button class="btn secondary" onclick="addCard('${id}', false)">Save</button>
+      </div>
+    </div>
+  `;
+};
+window.addCard = function(id, stay){
+  const d = state.decks.find(x => x.id === id);
+  if(!d) return;
+  const front = document.getElementById('card-front').value.trim();
+  const back = document.getElementById('card-back').value.trim();
+  if(!front || !back) return toast('Add text to both sides');
+  d.cards.push({id:uid('card'), front, back, archived:false, stats:{easy:0, medium:0, hard:0, reviews:0, mastered:false, nextReview:today()}});
+  save();
+  if(stay){
+    document.getElementById('card-front').value = '';
+    document.getElementById('card-back').value = '';
+    toast('Card saved');
+  }else openDeck(id);
+};
+window.showEditCard = function(id, cardId){
+  const d = state.decks.find(x => x.id === id);
+  const c = d?.cards.find(x => x.id === cardId);
+  if(!c) return;
+  app.innerHTML = `
+    <div class="card">
+      <div class="h1">Edit Card</div>
+      <div style="height:12px"></div>
+      <input id="edit-front" value="${esc(c.front).replace(/"/g,'&quot;')}">
+      <textarea id="edit-back">${esc(c.back)}</textarea>
+      <div class="grid2">
+        <button class="btn" onclick="saveEdit('${id}','${cardId}')">Save</button>
+        <button class="btn secondary" onclick="openDeck('${id}')">Cancel</button>
+      </div>
+    </div>
+  `;
+};
+window.saveEdit = function(id, cardId){
+  const d = state.decks.find(x => x.id === id);
+  const c = d?.cards.find(x => x.id === cardId);
+  if(!c) return;
+  const front = document.getElementById('edit-front').value.trim();
+  const back = document.getElementById('edit-back').value.trim();
+  if(!front || !back) return toast('Add text to both sides');
+  c.front = front;
+  c.back = back;
+  save();
+  openDeck(id);
+};
+
+window.archiveCard = function(deckId, cardId){
+  const d = state.decks.find(x=>x.id===deckId);
+  if(!d) return;
+  const c = d.cards.find(x=>x.id===cardId);
+  if(!c) return;
+  c.archived = true;
+  save();
+  openDeck(deckId);
+};
+
+window.deleteCard = function(id, cardId){
+  const d = state.decks.find(x => x.id === id);
+  if(!d) return;
+  d.cards = d.cards.filter(c => c.id !== cardId);
+  save();
+  openDeck(id);
+};
+window.deleteFile = function(id, fileId){
+  const d = state.decks.find(x => x.id === id);
+  if(!d) return;
+  d.files = d.files.filter(f => f.id !== fileId);
+  save();
+  openDeck(id);
+};
+window.duplicateDeck = function(id){
+  const d = state.decks.find(x => x.id === id);
+  if(!d) return;
+  const copy = JSON.parse(JSON.stringify(d));
+  copy.id = uid('deck');
+  copy.name += ' (Copy)';
+  copy.cards = copy.cards.map(c => ({...c, id:uid('card')}));
+  copy.files = copy.files.map(f => ({...f, id:uid('file')}));
+  state.decks.unshift(copy);
+  save();
+  openDeck(copy.id);
+};
+window.deleteDeck = function(id){
+  if(!confirm('Delete this deck permanently?')) return;
+  state.decks = state.decks.filter(d => d.id !== id);
+  save();
+  navigate('decks');
+};
+
+function renderStudyHub(){
+  const ds = visibleDecks().filter(d => activeCards(d).length);
+  app.innerHTML = `
+    <div class="card">
+      <div class="h1">Study</div>
+      <div class="small" style="margin-top:6px">Pick a deck and start with as few steps as possible.</div>
+    </div>
+    ${ds.length ? `<div class="list">${ds.map(d => `
+      <div class="panel">
+        <div class="space">
+          <div>
+            <div class="row wrap"><div class="h3">${esc(d.name)}</div>${d.starter ? '<span class="badge">Starter</span>' : ''}</div>
+            <div class="small">${activeCards(d).length} cards · ${dueCards(d).length} due today</div>
+          </div>
+          <button class="btn secondary inline" onclick="openDeck('${d.id}')">View</button>
+        </div>
+        <div style="height:12px"></div>
+        <div class="grid2">
+          <button class="btn" onclick="startStudy('${d.id}','flashcard')">Flashcard Mode</button>
+          <button class="btn secondary" onclick="startStudy('${d.id}','quiz')">Quiz Mode</button>
+        </div>
+      </div>
+    `).join('')}</div>` : `<div class="card empty">No decks with cards yet.</div>`}
+  `;
+}
+window.startStudy = function(id, mode='flashcard', resume=''){
+  const d = findDeck(id);
+  if(!d || !activeCards(d).length) return toast('This deck has no cards yet');
+  const base = activeCards(d);
+  const cards = (resume && state.sessions.recent?.remaining?.length)
+    ? state.sessions.recent.remaining.map(i => base.find(c => c.id === i)).filter(Boolean)
+    : (dueCards(d).length ? dueCards(d) : base.slice());
+  study = {cards, index:0, flipped:false, mode, results:{studied:0, correct:0, xp:0, points:0, unlocks:[]}, options:[]};
+  state.sessions.recent = {deckId:id, mode, remaining:cards.map(c => c.id)};
+  save();
+  renderStudyCard();
+};
+function renderStudyCard(){
+  const d = findDeck(state.sessions.recent?.deckId || '');
+  const c = study.cards[study.index];
+  if(!d) return renderStudyHub();
+  if(!c) return renderStudyComplete(d);
+
+  if(study.mode === 'quiz'){
+    study.options = makeQuizOptions(d, c);
+    app.innerHTML = `
+      <div class="card">
+        <div class="space">
+          <div><div class="h1">${esc(d.name)}</div><div class="small">Quiz mode · ${study.index + 1}/${study.cards.length}</div></div>
+          <button class="btn secondary inline" onclick="navigate('study')">Exit</button>
+        </div>
+        ${rewardHtml()}
+        <div style="height:12px"></div>
+        <div class="flashcard" style="min-height:180px">${esc(c.front)}</div>
+        <div style="height:12px"></div>
+        <div class="list">
+          ${study.options.map((o, i) => `<button id="quiz-opt-${i}" class="btn secondary quiz-option" onclick="answerQuiz('${c.id}', ${i})">${esc(o.text)}</button>`).join('')}
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  app.innerHTML = `
+    <div class="card">
+      <div class="space">
+        <div><div class="h1">${esc(d.name)}</div><div class="small">Flashcard mode · ${study.index + 1}/${study.cards.length}</div></div>
+        <button class="btn secondary inline" onclick="navigate('study')">Exit</button>
+      </div>
+      ${rewardHtml()}
+      <div style="height:12px"></div>
+      <div class="flashcard ${study.flipped ? 'flipped' : ''}" onclick="flipStudyCard()">${esc(study.flipped ? c.back : c.front)}</div>
+      <div style="height:12px"></div>
+      <div class="small" style="text-align:center">${study.flipped ? 'Choose how it felt' : 'Tap card to flip'}</div>
+      <div style="height:12px"></div>
+      ${study.flipped ? `
+        <div class="grid3">
+          <button class="btn warning" onclick="rateCard('hard')">Hard</button>
+          <button class="btn secondary" onclick="rateCard('medium')">Medium</button>
+          <button class="btn success" onclick="rateCard('easy')">Easy</button>
+        </div>
+      ` : `<button class="btn" onclick="flipStudyCard()">Show Answer</button>`}
+    </div>
+  `;
+}
+window.flipStudyCard = function(){
+  rewardNotice = null;
+  study.flipped = !study.flipped;
+  renderStudyCard();
+};
+function makeQuizOptions(deck, card){
+  const others = activeCards(deck).filter(c => c.id !== card.id).map(c => c.back);
+  for(let i=others.length-1;i>0;i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [others[i], others[j]] = [others[j], others[i]];
+  }
+  const opts = [card.back, ...others.slice(0,3)].map(text => ({text, correct:text === card.back}));
+  for(let i=opts.length-1;i>0;i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [opts[i], opts[j]] = [opts[j], opts[i]];
+  }
+  return opts;
+}
+window.rateCard = function(rating){
+  const c = study.cards[study.index];
+  if(!c) return;
+  updateCardSchedule(c, rating);
+  if(rating === 'hard') study.cards.push(c);
+  study.results.studied++;
+  award(1, false);
+  state.user.daily.studied++;
+  state.sessions.recent.remaining = state.sessions.recent.remaining.filter(id => id !== c.id);
+  save();
+  study.index++;
+  study.flipped = false;
+  renderStudyCard();
+};
+window.answerQuiz = function(cardId, selected){
+  const c = study.cards[study.index];
+  if(!c || c.id !== cardId) return;
+  const correctIndex = study.options.findIndex(o => o.correct);
+  const correct = selected === correctIndex;
+  study.options.forEach((o, i) => {
+    const btn = document.getElementById('quiz-opt-' + i);
+    if(!btn) return;
+    btn.disabled = true;
+    if(i === correctIndex) btn.classList.add('correct');
+    if(i === selected && !correct) btn.classList.add('wrong');
+  });
+  updateCardSchedule(c, correct ? 'easy' : 'hard');
+  if(correct) study.results.correct++;
+  study.results.studied++;
+  award(1, false);
+  state.user.daily.studied++;
+  state.sessions.recent.remaining = state.sessions.recent.remaining.filter(id => id !== c.id);
+  save();
+  setTimeout(() => {
+    study.index++;
+    renderStudyCard();
+  }, 700);
+};
+function renderStudyComplete(d){
+  award(0, true);
+  save();
+  app.innerHTML = `
+    <div class="card">
+      <div class="h1">Session complete</div>
+      <div class="small" style="margin-top:6px">Nice work. Your pet noticed.</div>
+      <div style="height:12px"></div>
+      ${renderPet(false)}
+      <div style="height:12px"></div>
+      <div class="grid2">
+        <div class="panel"><div class="small">XP gained</div><div class="h1" style="margin-top:6px">+${study.results.xp}</div></div>
+        <div class="panel"><div class="small">Points earned</div><div class="h1" style="margin-top:6px">+${study.results.points}</div></div>
+      </div>
+      ${study.results.unlocks.length ? `<div style="height:12px"></div><div class="panel"><div class="h3">Rewards unlocked</div><div class="small" style="margin-top:8px">${study.results.unlocks.map(x => '• ' + esc(x)).join('<br>')}</div></div>` : ''}
+      <div style="height:12px"></div>
+      <div class="grid2">
+        <button class="btn" onclick="startStudy('${d.id}','${study.mode}')">Study Again</button>
+        <button class="btn secondary" onclick="navigate('home')">Back Home</button>
+      </div>
+    </div>
+  `;
+  state.sessions.recent = {deckId:d.id, mode:study.mode, remaining:[]};
+  save();
+}
+
+function renderPetPage(){
+  const xp = xpForLevel(state.pet.level);
+  const owned = ITEMS.filter(i => state.pet.inventory.includes(i.id));
+  const shop = ITEMS.filter(i => !state.pet.inventory.includes(i.id));
+  const equipped = ITEMS.filter(i => state.pet.equipped[i.category] === i.id);
+  app.innerHTML = `
+    <div class="card">
+      <div style="text-align:center">
+        <div class="h1">${esc(state.pet.name)}</div>
+        <div class="small">Level ${state.pet.level} · ${petMood()} mood</div>
+        <div style="display:flex;justify-content:center;margin:14px 0">${renderPet(true)}</div>
+        <div class="progress"><div style="width:${Math.round(state.pet.xp / xp * 100)}%"></div></div>
+        <div class="tiny" style="margin-top:8px">${state.pet.xp} / ${xp} XP to next level</div>
+      </div>
+      <div style="height:12px"></div>
+      <div class="grid2">
+        <div class="panel"><div class="small">Points</div><div class="h1" style="margin-top:6px">${state.user.points}</div></div>
+        <div class="panel"><div class="small">Streak</div><div class="h1" style="margin-top:6px">${state.user.streak.current}</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="h2">Equipped Items</div>
+      <div style="height:10px"></div>
+      ${equipped.length ? `<div class="list">${equipped.map(itemRow).join('')}</div>` : `<div class="empty">Nothing equipped yet.</div>`}
+    </div>
+
+    <div class="card">
+      <div class="h2">Inventory</div>
+      <div style="height:10px"></div>
+      ${owned.length ? `<div class="list">${owned.map(itemRow).join('')}</div>` : `<div class="empty">Buy an item from the shop below.</div>`}
+    </div>
+
+    <div class="card">
+      <div class="h2">Shop</div>
+      <div style="height:10px"></div>
+      ${shop.length ? `<div class="list">${shop.map(shopRow).join('')}</div>` : `<div class="empty">You own everything in the shop.</div>`}
+    </div>
+  `;
+}
+function itemRow(i){
+  const active = state.pet.equipped[i.category] === i.id;
+  return `
+    <div class="panel">
+      <div class="space">
+        <div class="row">
+          <div class="icon">${i.icon}</div>
+          <div><div class="h3">${esc(i.name)}</div><div class="small">${esc(i.category)}</div></div>
+        </div>
+        ${active ? `<button class="btn secondary inline" onclick="removeItem('${i.category}')">Remove</button>` : `<button class="btn inline" onclick="equipItem('${i.id}')">Equip</button>`}
+      </div>
+    </div>
+  `;
+}
+function shopRow(i){
+  const can = state.user.points >= i.price;
+  return `
+    <div class="panel">
+      <div class="space">
+        <div class="row">
+          <div class="icon">${i.icon}</div>
+          <div><div class="h3">${esc(i.name)}</div><div class="small">${i.price} points · ${esc(i.category)}</div></div>
+        </div>
+        <button class="btn ${can ? '' : 'secondary'} inline" ${can ? `onclick="buyItem('${i.id}')"` : 'disabled'}>${can ? 'Buy' : 'Not enough'}</button>
+      </div>
+    </div>
+  `;
+}
+window.buyItem = function(id){
+  const i = ITEMS.find(x => x.id === id);
+  if(!i || state.user.points < i.price || state.pet.inventory.includes(i.id)) return;
+  state.user.points -= i.price;
+  state.pet.inventory.push(i.id);
+  save();
+  renderPetPage();
+};
+window.equipItem = function(id){
+  const i = ITEMS.find(x => x.id === id);
+  if(!i || !state.pet.inventory.includes(i.id)) return;
+  state.pet.equipped[i.category] = i.id;
+  state.pet.mood = 'happy';
+  state.pet.lastMoodAt = Date.now();
+  save();
+  renderPetPage();
+};
+window.removeItem = function(cat){
+  state.pet.equipped[cat] = null;
+  save();
+  renderPetPage();
+};
+window.speakText = function(text){
+  if(!('speechSynthesis' in window)) return toast('Audio is not supported on this device');
+  speechSynthesis.cancel();
+  speechSynthesis.speak(new SpeechSynthesisUtterance(text));
+};
+
+
+window.archiveDeck = function(id){
+  const d = findDeck(id);
+  if(!d) return;
+  d.archived = true;
+  save();
+  renderDecks();
+};
+
+window.showArchive = function(){
+  const archived = allDecks().filter(d=>d.archived);
+  app.innerHTML = `
+    <div class="card">
+      <div class="h1">Archived Decks</div>
+      <button class="btn secondary inline" onclick="navigate('decks')">Back</button>
+    </div>
+    ${archived.length ? `<div class="list">${archived.map(d=>`
+      <div class="panel">
+        <div class="space">
+          <div>
+            <div class="h3">${esc(d.name)}</div>
+            <div class="small">${activeCards(d).length} cards</div>
+          </div>
+          <div class="row">
+            <button class="btn secondary inline" onclick="restoreDeck('${d.id}')">Restore</button>
+            <button class="btn danger inline" onclick="deleteArchived('${d.id}')">Delete</button>
+          </div>
+        </div>
+      </div>
+    `).join('')}</div>` : `<div class="empty">No archived decks.</div>`}
+  `;
+};
+
+window.restoreDeck = function(id){
+  const d = findDeck(id);
+  if(!d) return;
+  d.archived = false;
+  save();
+  showArchive();
+};
+
+window.deleteArchived = function(id){
+  if(!confirm('Are you sure you want to delete this permanently?')) return;
+  state.decks = state.decks.filter(d=>d.id!==id);
+  state.starterDecks = state.starterDecks.filter(d=>d.id!==id);
+  save();
+  showArchive();
+};
+
+render();
+})();
+</script>
+</body>
+</html>
