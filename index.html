@@ -93,6 +93,11 @@ textarea{min-height:100px;resize:vertical}
 .pet.big .glasses{top:68px;width:74px;height:18px}.pet.big .glasses:before,.pet.big .glasses:after{width:24px;height:18px;border-width:3px;border-radius:8px}.pet.big .glasses i{top:7px;width:12px;height:3px}
 .file-chip{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 12px;border-radius:14px;background:var(--surface2);border:1px solid var(--border)}
 .icon{width:34px;height:34px;border-radius:10px;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:18px}
+.ai-chip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border-radius:999px;font-size:12px;font-weight:700}
+.ai-chip.high{background:var(--successbg);color:var(--success)}
+.ai-chip.medium{background:var(--accent2);color:var(--accent)}
+.ai-chip.low{background:var(--dangerbg);color:var(--danger)}
+.kpi{padding:10px;border-radius:14px;border:1px solid var(--border);background:var(--surface2)}
 </style>
 </head>
 <body>
@@ -148,13 +153,15 @@ const addDays = (dateStr, n) => {
 const xpForLevel = level => 60 + (level - 1) * 35;
 const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
 const shorten = (s, n) => clean(s).length > n ? clean(s).slice(0, n - 1).trim() + '…' : clean(s);
+const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+const defaultCardStats = () => ({easy:0, medium:0, hard:0, reviews:0, mastered:false, nextReview:today(), interval:0, ease:2.5, lapses:0});
 
 function seedDeck(t){
   return {
     id:t.id, starter:true, archived:false, name:t.name, description:t.description, createdAt:Date.now(), updatedAt:Date.now(), files:[],
     cards:t.cards.map(c => ({
       id:uid('card'), front:c[0], back:c[1], archived:false,
-      stats:{easy:0, medium:0, hard:0, reviews:0, mastered:false, nextReview:today()}
+      stats:defaultCardStats()
     }))
   };
 }
@@ -195,7 +202,7 @@ function normalizeDeck(d){
       front:c.front || '',
       back:c.back || '',
       archived:!!c.archived,
-      stats:Object.assign({easy:0, medium:0, hard:0, reviews:0, mastered:false, nextReview:today()}, c.stats || {})
+      stats:Object.assign(defaultCardStats(), c.stats || {})
     }))
   };
 }
@@ -331,10 +338,25 @@ function award(cardsCount, sessionDone){
   state.pet.lastMoodAt = Date.now();
 }
 function updateCardSchedule(card, rating){
-  card.stats[rating] = (card.stats[rating] || 0) + 1;
-  card.stats.reviews = (card.stats.reviews || 0) + 1;
-  card.stats.nextReview = rating === 'hard' ? today() : rating === 'medium' ? addDays(today(), 2) : addDays(today(), 4);
-  card.stats.mastered = (card.stats.easy >= 3) && (card.stats.easy > card.stats.hard);
+  const s = Object.assign(defaultCardStats(), card.stats || {});
+  s[rating] = (s[rating] || 0) + 1;
+  s.reviews = (s.reviews || 0) + 1;
+  if(rating === 'hard'){
+    s.lapses += 1;
+    s.interval = 0;
+    s.ease = clamp(s.ease - 0.2, 1.3, 3.0);
+    s.nextReview = today();
+  }else if(rating === 'medium'){
+    s.interval = s.interval <= 1 ? 2 : Math.round(s.interval * Math.max(1.2, s.ease - 0.35));
+    s.ease = clamp(s.ease - 0.05, 1.3, 3.0);
+    s.nextReview = addDays(today(), s.interval);
+  }else{
+    s.interval = s.interval <= 1 ? 4 : Math.round(s.interval * s.ease);
+    s.ease = clamp(s.ease + 0.03, 1.3, 3.0);
+    s.nextReview = addDays(today(), s.interval);
+  }
+  s.mastered = (s.easy >= 3) && (s.easy > s.hard) && s.interval >= 7;
+  card.stats = s;
 }
 function render(){
   normalizeDay();
@@ -348,56 +370,7 @@ function render(){
 window.navigate = function(page){
   route = page;
   rewardNotice = null;
-  
-window.archiveDeck = function(id){
-  const d = findDeck(id);
-  if(!d) return;
-  d.archived = true;
-  save();
-  renderDecks();
-};
-
-window.showArchive = function(){
-  const archived = allDecks().filter(d=>d.archived);
-  app.innerHTML = `
-    <div class="card">
-      <div class="h1">Archived Decks</div>
-      <button class="btn secondary inline" onclick="navigate('decks')">Back</button>
-    </div>
-    ${archived.length ? `<div class="list">${archived.map(d=>`
-      <div class="panel">
-        <div class="space">
-          <div>
-            <div class="h3">${esc(d.name)}</div>
-            <div class="small">${activeCards(d).length} cards</div>
-          </div>
-          <div class="row">
-            <button class="btn secondary inline" onclick="restoreDeck('${d.id}')">Restore</button>
-            <button class="btn danger inline" onclick="deleteArchived('${d.id}')">Delete</button>
-          </div>
-        </div>
-      </div>
-    `).join('')}</div>` : `<div class="empty">No archived decks.</div>`}
-  `;
-};
-
-window.restoreDeck = function(id){
-  const d = findDeck(id);
-  if(!d) return;
-  d.archived = false;
-  save();
-  showArchive();
-};
-
-window.deleteArchived = function(id){
-  if(!confirm('Are you sure you want to delete this permanently?')) return;
-  state.decks = state.decks.filter(d=>d.id!==id);
-  state.starterDecks = state.starterDecks.filter(d=>d.id!==id);
-  save();
-  showArchive();
-};
-
-render();
+  render();
 };
 
 function renderHome(){
@@ -549,7 +522,7 @@ window.processPastedText = function(){
   const text = document.getElementById('paste-body').value.trim();
   if(!text) return toast('Paste some text first');
   const result = analyzeText(text);
-  showDraftReview({name, source:'Pasted text', summary:result.summary, drafts:result.cards, targetDeckId:null, fileMeta:null});
+  showDraftReview({name, source:'Pasted text', summary:result.summary, drafts:result.cards, targetDeckId:null, fileMeta:null, analysis:result.stats});
 };
 window.showImportDeck = function(targetId=''){
   app.innerHTML = `
@@ -576,7 +549,7 @@ window.processFile = async function(targetId=''){
     if(!text.trim()) throw new Error('No readable text found');
     const result = analyzeText(text);
     showDraftReview({
-      name, source:file.name, summary:result.summary, drafts:result.cards, targetDeckId:targetId || null,
+      name, source:file.name, summary:result.summary, drafts:result.cards, targetDeckId:targetId || null, analysis:result.stats,
       fileMeta:{id:uid('file'), name:file.name, type:file.type || file.name.split('.').pop().toUpperCase(), importedAt:Date.now(), archived:false}
     });
   }catch(err){
@@ -609,34 +582,127 @@ function analyzeText(text){
   const sents = raw.split(/(?<=[.!?])\s+/).map(s => s.trim()).filter(Boolean);
   const cards = [];
   const seen = new Set();
-  function push(front, back){
-    front = shorten(front, 100);
-    back = shorten(back, 150);
-    const key = (front + '|' + back).toLowerCase();
-    if(!front || !back || seen.has(key)) return;
-    seen.add(key);
-    cards.push({front, back});
+  const commonStarts = ['the','a','an','this','these','those','it','they','we','you'];
+  const stop = new Set('the and for are with this that from your have has into onto over under about when where what which while been being than then they them their there here because each other using used use into onto via per not but can could should would may might'.split(' '));
+  const headingStack = [];
+
+  function normalizeText(s){
+    return clean(String(s || '').replace(/[*_`#>]/g,'').replace(/\s+/g,' '));
   }
+  function contentTerms(s){
+    return normalizeText(s).toLowerCase().split(/[^a-z0-9]+/).filter(w => w.length > 2 && !stop.has(w));
+  }
+  function titleCase(s){
+    return s.split(' ').filter(Boolean).map(x => x[0]?.toUpperCase() + x.slice(1).toLowerCase()).join(' ');
+  }
+  function ensureQuestion(s){
+    const t = clean(s).replace(/[.!\s]+$/,'');
+    return t.endsWith('?') ? t : `${t}?`;
+  }
+  function jaccard(a,b){
+    const A = new Set(contentTerms(a));
+    const B = new Set(contentTerms(b));
+    if(!A.size || !B.size) return 0;
+    let inter = 0;
+    A.forEach(t => { if(B.has(t)) inter++; });
+    return inter / (A.size + B.size - inter);
+  }
+  function topKeywords(input, max=12){
+    const m = new Map();
+    contentTerms(input).forEach(w => m.set(w, (m.get(w) || 0) + 1));
+    return [...m.entries()].sort((a,b) => b[1]-a[1]).slice(0,max).map(([w]) => w);
+  }
+
+  function scoreCard(front, back, signal='inferred'){
+    const f = clean(front).toLowerCase();
+    const b = clean(back).toLowerCase();
+    const words = b.split(' ').length;
+    let score = 0.2;
+    if(signal === 'qa') score += 0.4;
+    if(signal === 'definition') score += 0.3;
+    if(signal === 'bullet') score += 0.25;
+    if(signal === 'copula') score += 0.3;
+    if(signal === 'acronym') score += 0.25;
+    if(signal === 'cloze') score += 0.15;
+    if(words >= 3 && words <= 24) score += 0.2;
+    if(front.endsWith('?')) score += 0.1;
+    if(!commonStarts.some(x => b.startsWith(x + ' '))) score += 0.05;
+    if(contentTerms(front).length >= 2) score += 0.05;
+    if(jaccard(front, back) < 0.7) score += 0.05;
+    if(f.includes('explain:')) score -= 0.08;
+    if(words > 32) score -= 0.1;
+    return clamp(score, 0.1, 0.99);
+  }
+
+  function push(front, back, signal='inferred'){
+    front = ensureQuestion(shorten(normalizeText(front), 100));
+    back = shorten(normalizeText(back), 180);
+    const key = (front + '|' + back).toLowerCase();
+    if(!front || !back || seen.has(key) || front.toLowerCase() === back.toLowerCase()) return;
+    if(back.split(' ').length < 2) return;
+    if([...seen].some(k => jaccard(k.split('|')[0], front) > 0.86 && jaccard(k.split('|')[1], back) > 0.84)) return;
+    seen.add(key);
+    cards.push({front, back, confidence:scoreCard(front, back, signal), signal});
+  }
+
+  const keywords = topKeywords(raw, 16);
+
   for(let i=0;i<lines.length-1;i++){
+    if(/^#{1,6}\s+/.test(lines[i]) || /^[A-Z][A-Z0-9 \-]{4,}$/.test(lines[i])) headingStack.unshift(normalizeText(lines[i].replace(/^#{1,6}\s+/, '')).slice(0, 40));
     if(/^(q|question)[:\-]/i.test(lines[i]) && /^(a|answer)[:\-]/i.test(lines[i+1])){
-      push(lines[i].replace(/^(q|question)[:\-]\s*/i,''), lines[i+1].replace(/^(a|answer)[:\-]\s*/i,''));
+      push(lines[i].replace(/^(q|question)[:\-]\s*/i,''), lines[i+1].replace(/^(a|answer)[:\-]\s*/i,''), 'qa');
       i++;
     }
   }
   for(const line of lines){
-    const m = line.match(/^(.{2,70}?)(?:\s*[:\-–]\s*)(.{8,220})$/);
-    if(m) push(`What is ${clean(m[1])}?`, m[2]);
+    const def = line.match(/^(.{2,80}?)(?:\s*[:\-–]\s*)(.{8,260})$/);
+    if(def) push(`What is ${clean(def[1])}?`, def[2], 'definition');
+    const bullet = line.match(/^(?:[-*•]|\d+[.)])\s+(.{10,220})$/);
+    if(bullet){
+      const phrase = clean(bullet[1]);
+      push(`Key idea: ${shorten(phrase.split(' ').slice(0,7).join(' '), 52)}?`, phrase, 'bullet');
+    }
+    const cop = line.match(/^(.{3,70}?)\s+(?:is|are|means|refers to|defined as)\s+(.{8,230})\.?$/i);
+    if(cop) push(`What is ${clean(cop[1])}?`, cop[2], 'copula');
+    const ac = line.match(/\b([A-Z][A-Z0-9]{1,8})\b\s*\(([^)]{3,60})\)/);
+    if(ac) push(`What does ${ac[1]} stand for?`, clean(ac[2]), 'acronym');
   }
-  if(cards.length < 4){
-    sents.filter(s => s.length > 25 && s.length < 170).slice(0,30).forEach(s => {
-      push(`Explain: ${shorten(s.split(' ').slice(0,6).join(' '), 44)}`, s);
+  sents.slice(0,70).forEach(s => {
+    const sentence = normalizeText(s);
+    const kw = keywords.find(k => new RegExp(`\\b${k}\\b`, 'i').test(sentence) && !stop.has(k));
+    if(kw && sentence.length > 35 && sentence.length < 170){
+      const klabel = titleCase(kw);
+      push(`How would you explain ${klabel} in this context?`, sentence, 'inferred');
+      const blank = sentence.replace(new RegExp(`\\b${kw}\\b`, 'i'), '_____');
+      if(blank !== sentence) push(`Fill in the blank: ${blank}`, klabel, 'cloze');
+    }
+  });
+  if(cards.length < 6){
+    sents.filter(s => s.length > 28 && s.length < 200).slice(0,40).forEach(s => {
+      push(`Explain: ${shorten(s.split(' ').slice(0,6).join(' '), 44)}`, s, 'inferred');
     });
   }
+  if(headingStack[0] && cards.length < 20){
+    cards.slice(0,8).forEach(c => {
+      push(`Under "${headingStack[0]}", ${c.front.replace(/\?$/,'')}?`, c.back, 'inferred');
+    });
+  }
+  cards.sort((a,b) => b.confidence - a.confidence);
   const summary = shorten(sents.filter(s => s.length > 40 && s.length < 170).slice(0,2).join(' ') || raw, 260);
-  return {summary, cards:cards.slice(0,50)};
+  return {
+    summary,
+    stats:{
+      sourceLines:lines.length,
+      candidates:cards.length,
+      highConfidence:cards.filter(c => c.confidence >= 0.75).length
+    },
+    cards:cards.slice(0,60)
+  };
 }
-function showDraftReview({name, source, summary, drafts, targetDeckId, fileMeta}){
+function showDraftReview({name, source, summary, drafts, targetDeckId, fileMeta, analysis}){
   const rows = drafts.length ? drafts : [{front:'Review this imported text', back:'Edit this draft and add more cards.'}];
+  const high = rows.filter(r => (r.confidence || 0) >= 0.75).length;
+  const medium = rows.filter(r => (r.confidence || 0) >= 0.55 && (r.confidence || 0) < 0.75).length;
   app.innerHTML = `
     <div class="card">
       <div class="space">
@@ -650,6 +716,12 @@ function showDraftReview({name, source, summary, drafts, targetDeckId, fileMeta}
       <div class="card" style="margin:0;box-shadow:none">
         <div class="h3">Here’s what this file is about</div>
         <div class="small" style="margin-top:8px">${esc(summary)}</div>
+        <div class="row wrap" style="margin-top:10px">
+          <div class="kpi tiny">High confidence: ${high}</div>
+          <div class="kpi tiny">Medium confidence: ${medium}</div>
+          ${analysis ? `<div class="kpi tiny">Candidates analyzed: ${analysis.candidates}</div>` : ''}
+          <div class="kpi tiny">Review low confidence cards before saving.</div>
+        </div>
       </div>
       <div style="height:12px"></div>
       <input id="draft-name" value="${esc(name).replace(/"/g,'&quot;')}">
@@ -657,7 +729,13 @@ function showDraftReview({name, source, summary, drafts, targetDeckId, fileMeta}
       <div id="draft-list" class="list">
         ${rows.map((r,i) => `
           <div class="panel" data-row="${i}">
-            <div class="small">Draft ${i + 1}</div>
+            <div class="space">
+              <div class="small">Draft ${i + 1}</div>
+              <div class="row wrap">
+                ${(r.confidence || 0) >= 0.75 ? '<span class="ai-chip high">AI confidence: High</span>' : (r.confidence || 0) >= 0.55 ? '<span class="ai-chip medium">AI confidence: Medium</span>' : '<span class="ai-chip low">AI confidence: Low</span>'}
+                ${r.signal ? `<span class="pill">Type: ${esc(r.signal)}</span>` : ''}
+              </div>
+            </div>
             <input class="draft-front" value="${esc(r.front).replace(/"/g,'&quot;')}" placeholder="Front">
             <textarea class="draft-back" placeholder="Back">${esc(r.back)}</textarea>
             <button class="btn ghost inline" onclick="removeDraft(this)">Delete</button>
@@ -667,11 +745,24 @@ function showDraftReview({name, source, summary, drafts, targetDeckId, fileMeta}
       <div style="height:12px"></div>
       <div class="grid2">
         <button class="btn secondary" onclick="addDraft()">Add Card</button>
+        <button class="btn ghost" onclick="filterLowConfidence()">Remove Low Confidence</button>
         <button class="btn" onclick='saveDrafts(${JSON.stringify(targetDeckId || "")}, ${JSON.stringify(fileMeta)})'>${targetDeckId ? 'Save to Deck' : 'Create Deck and Save'}</button>
       </div>
     </div>
   `;
 }
+window.filterLowConfidence = function(){
+  const rows = [...document.querySelectorAll('[data-row]')];
+  let removed = 0;
+  rows.forEach(r => {
+    const chip = r.querySelector('.ai-chip');
+    if(chip?.textContent.includes('Low')){
+      r.remove();
+      removed++;
+    }
+  });
+  toast(removed ? `Removed ${removed} low-confidence drafts` : 'No low-confidence drafts found');
+};
 window.addDraft = function(){
   const list = document.getElementById('draft-list');
   const div = document.createElement('div');
@@ -702,7 +793,7 @@ window.saveDrafts = function(targetId, fileMeta){
     deck = {id:uid('deck'), starter:false, archived:false, name:document.getElementById('draft-name').value.trim() || 'Imported Deck', description:'Created from imported content', createdAt:Date.now(), updatedAt:Date.now(), files:[], cards:[]};
     state.decks.unshift(deck);
   }
-  rows.forEach(r => deck.cards.push({id:uid('card'), front:r.front, back:r.back, archived:false, stats:{easy:0, medium:0, hard:0, reviews:0, mastered:false, nextReview:today()}}));
+  rows.forEach(r => deck.cards.push({id:uid('card'), front:r.front, back:r.back, archived:false, stats:defaultCardStats()}));
   if(fileMeta) deck.files.unshift(fileMeta);
   deck.updatedAt = Date.now();
   save();
@@ -788,7 +879,7 @@ window.copyStarter = function(id){
   copy.createdAt = Date.now();
   copy.updatedAt = Date.now();
   copy.files = [];
-  copy.cards = copy.cards.map(c => ({...c, id:uid('card'), archived:false, stats:{easy:0, medium:0, hard:0, reviews:0, mastered:false, nextReview:today()}}));
+  copy.cards = copy.cards.map(c => ({...c, id:uid('card'), archived:false, stats:defaultCardStats()}));
   state.decks.unshift(copy);
   save();
   openDeck(copy.id);
@@ -813,7 +904,7 @@ window.addCard = function(id, stay){
   const front = document.getElementById('card-front').value.trim();
   const back = document.getElementById('card-back').value.trim();
   if(!front || !back) return toast('Add text to both sides');
-  d.cards.push({id:uid('card'), front, back, archived:false, stats:{easy:0, medium:0, hard:0, reviews:0, mastered:false, nextReview:today()}});
+  d.cards.push({id:uid('card'), front, back, archived:false, stats:defaultCardStats()});
   save();
   if(stay){
     document.getElementById('card-front').value = '';
