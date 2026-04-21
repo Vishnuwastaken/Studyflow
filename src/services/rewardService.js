@@ -14,7 +14,9 @@ export function addXP(state, n, toast){
 }
 
 export function awardSession(state, studyResults, cardsCount, sessionDone, allDecks, activeCards){
-  const xp = cardsCount * 5 + (sessionDone ? 10 : 0);
+  const baseXp = cardsCount * 5 + (sessionDone ? 10 : 0);
+  const moodMultiplier = state.pet.mood === 'happy' ? 1.1 : state.pet.mood === 'hungry' ? 0.9 : 1;
+  const xp = Math.max(1, Math.round(baseXp * moodMultiplier));
   const points = cardsCount * 3 + (sessionDone ? 6 : 0);
   state.user.points += points;
   addXP(state, xp);
@@ -42,7 +44,7 @@ export function awardSession(state, studyResults, cardsCount, sessionDone, allDe
     addXP(state, 30);
     studyResults.unlocks.push('Mastered a deck');
   }
-  state.pet.mood = sessionDone ? 'excited' : 'happy';
+  state.pet.mood = sessionDone ? 'happy' : (state.pet.mood === 'hungry' ? 'calm' : 'happy');
   state.pet.lastMoodAt = Date.now();
   return { xp, points };
 }
