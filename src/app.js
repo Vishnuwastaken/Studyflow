@@ -13,6 +13,8 @@ import { renderPetPage } from './pages/petPage.js';
 let state = loadState();
 let route = 'home';
 let study = { cards:[], index:0, flipped:false, mode:'flashcard', options:[], results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
+let showArchive = false;
+let shopError = '';
 
 const app = document.getElementById('app');
 const findDeck = id => state.decks.find(d => d.id === id) || state.starterDecks.find(d => d.id === id);
@@ -50,9 +52,9 @@ function render(){
   if(state.user.daily.date !== today()) state.user.daily = { date:today(), studied:0 };
   setNav();
   if(route === 'home') app.innerHTML = renderHomePage({ recentDeck, state, petMood, petColor, xpForLevel });
-  else if(route === 'decks') app.innerHTML = renderDecksPage({ myDecks:state.decks.filter(d=>!d.archived), starterDecks:state.starterDecks.filter(d=>!d.archived), deckProgress, masteredPct, activeCards, dueCards });
+  else if(route === 'decks') app.innerHTML = renderDecksPage({ myDecks:state.decks.filter(d=>!d.archived), starterDecks:state.starterDecks.filter(d=>!d.archived), archivedDecks:allDecks().filter(d=>d.archived), deckProgress, masteredPct, activeCards, dueCards, showArchive, points:state.user.points });
   else if(route === 'study') renderStudyHub();
-  else app.innerHTML = renderPetPage({ state, items:ITEMS, xpForLevel, petMood, petColor });
+  else app.innerHTML = renderPetPage({ state, items:ITEMS, xpForLevel, petMood, petColor, shopError });
 }
 
 function renderStudyHub(){
@@ -61,6 +63,10 @@ function renderStudyHub(){
 }
 
 window.navigate = p => { route = p; render(); };
+window.toggleArchiveView = () => {
+  showArchive = !showArchive;
+  render();
+};
 window.showCreateDeck = () => {
   app.innerHTML = `<div class="card"><div class="h1">Create Deck</div><div style="height:12px"></div><input id="deck-name" placeholder="Deck name"><textarea id="deck-desc" placeholder="Short description"></textarea><div class="grid2"><button class="btn" onclick="createDeck()">Create</button><button class="btn secondary" onclick="navigate('decks')">Cancel</button></div></div>`;
 };
@@ -129,7 +135,7 @@ window.openDeck = id => {
   const d = findDeck(id);
   if(!d) return render();
   const editable = canEdit(d);
-  app.innerHTML = `<div class="card"><div class="space"><div><div class="h1">${esc(d.name)}</div><div class="small">${esc(d.description || '')}</div></div><button class="btn secondary inline" onclick="navigate('decks')">Back</button></div><div style="height:12px"></div><div class="grid2"><button class="btn" onclick="startStudy('${d.id}','flashcard')">Flashcard Mode</button><button class="btn secondary" onclick="startStudy('${d.id}','quiz')">Quiz Mode</button></div>${editable?`<div style="height:8px"></div><div class="grid2"><button class="btn secondary" onclick="showImportDeck('${d.id}')">Import File</button><button class="btn ghost" onclick="showAddCard('${d.id}')">Add Card</button></div>`:''}<div style="height:12px"></div><div class="h2">Cards</div><div class="list" style="margin-top:10px">${activeCards(d).map(c=>`<div class="panel"><div class="h3">${esc(c.front)}</div><div class="small" style="margin-top:6px">${esc(c.back)}</div></div>`).join('') || '<div class="empty">No cards yet.</div>'}</div></div>`;
+  app.innerHTML = `<div class="card"><div class="space"><div><div class="h1">${esc(d.name)}</div><div class="small">${esc(d.description || '')}</div></div><button class="btn secondary inline" onclick="navigate('decks')">Back</button></div><div style="height:12px"></div><div class="grid2"><button class="btn" onclick="startStudy('${d.id}','flashcard')">Flashcard Mode</button><button class="btn secondary" onclick="startStudy('${d.id}','quiz')">Quiz Mode</button></div>${editable?`<div style="height:8px"></div><div class="grid2"><button class="btn secondary" onclick="showImportDeck('${d.id}')">Import File</button><button class="btn ghost" onclick="showAddCard('${d.id}')">Add Card</button></div>`:''}${!d.archived?`<div style="height:8px"></div><button class="btn warning" onclick="archiveDeck('${d.id}')">Archive Deck</button>`:''}<div style="height:12px"></div><div class="h2">Cards</div><div class="list" style="margin-top:10px">${activeCards(d).map(c=>`<div class="panel"><div class="space"><div class="h3">${esc(c.front)}</div><div class="row"><button class="btn secondary inline" onclick='speakText(${JSON.stringify(c.front)})'>🔊 Front</button><button class="btn secondary inline" onclick='speakText(${JSON.stringify(c.back)})'>🔊 Back</button>${editable?`<button class="btn danger inline" onclick="deleteCard('${d.id}','${c.id}')">Delete</button>`:''}</div></div><div class="small" style="margin-top:6px">${esc(c.back)}</div></div>`).join('') || '<div class="empty">No cards yet.</div>'}</div></div>`;
 };
 
 window.showAddCard = id => app.innerHTML = `<div class="card"><div class="h1">Add Cards Manually</div><input id="card-front" placeholder="Front of card"><textarea id="card-back" placeholder="Back of card"></textarea><div class="grid2"><button class="btn" onclick="addCard('${id}')">Save</button><button class="btn secondary" onclick="openDeck('${id}')">Cancel</button></div></div>`;
@@ -162,15 +168,20 @@ function renderStudyCard(){
 
   if(study.mode === 'quiz'){
     study.options = makeQuizOptions(d, c);
-    app.innerHTML = renderStudyCardPage({ deckName:d.name, index:study.index+1, total:study.cards.length, mode:'Quiz mode', text:c.front, options:study.options });
+    app.innerHTML = renderStudyCardPage({ deckName:d.name, index:study.index+1, total:study.cards.length, mode:'Quiz mode', text:c.front, options:study.options, showAudio:true });
     study.options.forEach((o, i) => {
       const btn = document.getElementById(`quiz-opt-${i}`);
       if(btn) btn.onclick = () => answerQuiz(c.id, i);
     });
     return;
   }
-  app.innerHTML = renderStudyCardPage({ deckName:d.name, index:study.index+1, total:study.cards.length, mode:'Flashcard mode', text:study.flipped ? c.back : c.front, flipped:study.flipped, options:[] });
+  app.innerHTML = renderStudyCardPage({ deckName:d.name, index:study.index+1, total:study.cards.length, mode:'Flashcard mode', text:study.flipped ? c.back : c.front, flipped:study.flipped, options:[], showAudio:true });
 }
+window.speakStudyCard = side => {
+  const c = study.cards[study.index];
+  if(!c) return;
+  speakText(side === 'back' ? c.back : c.front);
+};
 window.flipStudyCard = () => { study.flipped = !study.flipped; renderStudyCard(); };
 window.rateCard = rating => {
   const c = study.cards[study.index];
@@ -178,7 +189,8 @@ window.rateCard = rating => {
   updateCardSchedule(c, rating);
   if(rating === 'hard') study.cards.push(c);
   study.results.studied++;
-  awardSession(state, study.results, 1, false, allDecks, activeCards);
+  const reward = awardSession(state, study.results, 1, false, allDecks, activeCards);
+  toast(`+${reward.xp} XP · +${reward.points} points`);
   state.user.daily.studied++;
   state.sessions.recent.remaining = state.sessions.recent.remaining.filter(id => id !== c.id);
   save();
@@ -191,7 +203,8 @@ window.answerQuiz = (cardId, selected) => {
   const correctIndex = study.options.findIndex(o => o.correct);
   updateCardSchedule(c, selected === correctIndex ? 'easy' : 'hard');
   study.results.studied++;
-  awardSession(state, study.results, 1, false, allDecks, activeCards);
+  const reward = awardSession(state, study.results, 1, false, allDecks, activeCards);
+  toast(`+${reward.xp} XP · +${reward.points} points`);
   state.user.daily.studied++;
   state.sessions.recent.remaining = state.sessions.recent.remaining.filter(id => id !== c.id);
   save();
@@ -206,10 +219,18 @@ function renderStudyComplete(deck){
 
 window.buyItem = id => {
   const item = ITEMS.find(i => i.id === id);
-  if(!item || state.user.points < item.price || state.pet.inventory.includes(id)) return;
+  if(!item || state.pet.inventory.includes(id)) return;
+  if(state.user.points < item.price){
+    shopError = 'Not enough points';
+    toast('Not enough points');
+    render();
+    return;
+  }
+  shopError = '';
   state.user.points -= item.price;
   state.pet.inventory.push(id);
   save();
+  toast(`${item.name} purchased`);
   render();
 };
 window.equipItem = id => {
@@ -218,6 +239,54 @@ window.equipItem = id => {
   state.pet.equipped[item.category] = id;
   save();
   render();
+};
+window.archiveDeck = id => {
+  const d = allDecks().find(x => x.id === id);
+  if(!d) return;
+  d.archived = true;
+  save();
+  route = 'decks';
+  showArchive = true;
+  toast('Deck archived');
+  render();
+};
+window.restoreDeck = id => {
+  const d = allDecks().find(x => x.id === id);
+  if(!d) return;
+  d.archived = false;
+  save();
+  toast('Deck restored');
+  render();
+};
+window.deleteDeckPermanently = id => {
+  const d = allDecks().find(x => x.id === id);
+  if(!d || !d.archived) return;
+  if(!window.confirm('Delete this deck permanently?')) return;
+  state.decks = state.decks.filter(x => x.id !== id);
+  state.starterDecks = state.starterDecks.filter(x => x.id !== id);
+  save();
+  toast('Deck deleted');
+  render();
+};
+window.deleteCard = (deckId, cardId) => {
+  const d = state.decks.find(x => x.id === deckId);
+  if(!d) return;
+  if(!window.confirm('Delete this flashcard?')) return;
+  d.cards = d.cards.filter(c => c.id !== cardId);
+  save();
+  toast('Flashcard deleted');
+  openDeck(deckId);
+};
+window.speakText = text => {
+  const synth = window.speechSynthesis;
+  if(!synth || typeof SpeechSynthesisUtterance === 'undefined'){
+    toast('Audio not available');
+    return;
+  }
+  synth.cancel();
+  const utter = new SpeechSynthesisUtterance(String(text || '').trim());
+  if(!utter.text) return;
+  synth.speak(utter);
 };
 
 render();
