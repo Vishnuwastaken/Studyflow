@@ -70,6 +70,9 @@ textarea{min-height:100px;resize:vertical}
 .reward{display:inline-flex;padding:9px 12px;border-radius:12px;background:var(--accent2);color:var(--accent);font-weight:800}
 .quiz-option.correct{background:var(--successbg)!important;color:var(--text)!important;border:2px solid var(--success)!important}
 .quiz-option.wrong{background:var(--dangerbg)!important;color:var(--text)!important;border:2px solid var(--danger)!important}
+.match-option.selected{border:2px solid var(--accent)!important}
+.match-option.correct{background:var(--successbg)!important;border:2px solid var(--success)!important}
+.match-option.wrong{background:var(--dangerbg)!important;border:2px solid var(--danger)!important}
 .pet-wrap{display:flex;align-items:center;justify-content:center}
 .pet{position:relative;width:86px;height:86px}
 .pet.big{width:170px;height:170px}
@@ -82,7 +85,10 @@ textarea{min-height:100px;resize:vertical}
 .eye.left{left:34px}.eye.right{right:34px}
 .pet.big .eye{width:10px;height:12px;top:73px}.pet.big .eye.left{left:63px}.pet.big .eye.right{right:63px}
 .mouth{position:absolute;left:50%;top:49px;transform:translateX(-50%);width:14px;height:7px;border-bottom:2px solid #1b2635;border-radius:0 0 18px 18px}
+.mouth.hungry{border-bottom:none;border-top:2px solid #1b2635;border-radius:18px 18px 0 0;top:52px}
+.mouth.happy{height:9px;border-bottom-width:3px}
 .pet.big .mouth{top:92px;width:26px;height:12px;border-bottom-width:3px}
+.pet.big .mouth.hungry{top:96px;border-top-width:3px}
 .hat{position:absolute;left:50%;top:8px;transform:translateX(-50%);width:34px;height:10px;background:#f3c95e;border-radius:12px 12px 6px 6px;border:2px solid #996f1b}
 .hat:after{content:'';position:absolute;left:50%;transform:translateX(-50%);top:-10px;width:18px;height:12px;background:#f3c95e;border:2px solid #996f1b;border-bottom:none;border-radius:12px 12px 0 0}
 .pet.big .hat{width:66px;height:20px;top:14px;border-width:3px}.pet.big .hat:after{width:36px;height:24px;top:-20px;border-width:3px}
