@@ -13,11 +13,11 @@ export function addXP(state, n, toast){
   }
 }
 
-export function awardSession(state, studyResults, cardsCount, sessionDone, allDecks, activeCards){
+export function awardSession(state, studyResults, cardsCount, sessionDone, allDecks, activeCards, customRewards={}){
   const baseXp = cardsCount * 5 + (sessionDone ? 10 : 0);
   const moodMultiplier = state.pet.mood === 'happy' ? 1.1 : state.pet.mood === 'hungry' ? 0.9 : 1;
-  const xp = Math.max(1, Math.round(baseXp * moodMultiplier));
-  const points = cardsCount * 3 + (sessionDone ? 6 : 0);
+  const xp = Math.max(1, Math.round((customRewards.customXp ?? baseXp) * moodMultiplier));
+  const points = Math.max(1, Math.round(customRewards.customPoints ?? (cardsCount * 3 + (sessionDone ? 6 : 0))));
   state.user.points += points;
   addXP(state, xp);
   studyResults.xp += xp;

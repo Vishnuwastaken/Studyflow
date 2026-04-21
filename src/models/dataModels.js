@@ -15,10 +15,10 @@ export const STARTERS = [
 ];
 
 export const ITEMS = [
-  {id:'hat_sun', name:'Sunny Hat', category:'hat', price:60, icon:'🎩'},
-  {id:'glasses_round', name:'Round Glasses', category:'face', price:120, icon:'👓'},
-  {id:'color_mint', name:'Mint Color', category:'color', price:80, icon:'🟢', color:'#9fe6c1'},
-  {id:'color_peach', name:'Peach Color', category:'color', price:150, icon:'🟠', color:'#ffc89e'}
+  {id:'hat_sun', item_id:'hat_sun', name:'Sunny Hat', category:'hat', item_type:'hat', price:60, icon:'🎩'},
+  {id:'glasses_round', item_id:'glasses_round', name:'Round Glasses', category:'face', item_type:'accessory', price:120, icon:'👓'},
+  {id:'color_mint', item_id:'color_mint', name:'Mint Color', category:'color', item_type:'color', price:80, icon:'🟢', color:'#9fe6c1'},
+  {id:'color_peach', item_id:'color_peach', name:'Peach Color', category:'color', item_type:'color', price:150, icon:'🟠', color:'#ffc89e'}
 ];
 
 export const defaultCardStats = () => ({easy:0, medium:0, hard:0, reviews:0, mastered:false, nextReview:today(), interval:0, ease:2.5, lapses:0});
@@ -30,7 +30,7 @@ const seedDeck = t => ({
 
 export const createDefaultState = () => ({
   user:{ daily:{date:today(), studied:0}, streak:{current:0,lastStudyDate:null}, points:0, achievements:{streak3:false,cards50:false,masterDeck:false} },
-  pet:{ name:'Pebble', level:1, xp:0, mood:'calm', lastMoodAt:Date.now(), lastFedAt:Date.now(), inventory:[], equipped:{hat:null,face:null,color:null} },
+  pet:{ name:'Pebble', level:1, xp:0, mood:'calm', lastMoodAt:Date.now(), lastFedAt:Date.now(), inventory:[], items:[], equipped:{hat:null,accessory:null,color:null} },
   starterDecks: STARTERS.map(seedDeck),
   decks: [],
   sessions:{recent:null}
