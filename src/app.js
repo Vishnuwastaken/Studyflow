@@ -18,16 +18,46 @@ let shopError = '';
 const FEED_COST = 8;
 const MOOD_STEPS = ['hungry', 'calm', 'happy'];
 const MOOD_DECAY_MS = 1000 * 60 * 60 * 8;
+const PET_TYPES = ['hat','color','accessory'];
 
 const app = document.getElementById('app');
 const findDeck = id => state.decks.find(d => d.id === id) || state.starterDecks.find(d => d.id === id);
 const allDecks = () => [...state.decks, ...state.starterDecks];
 const visibleDecks = () => allDecks().filter(d => !d.archived);
 const canEdit = deck => state.decks.some(d => d.id === deck.id);
+const toItemType = item => item.item_type || (item.category === 'face' ? 'accessory' : item.category);
 const petColor = () => ITEMS.find(i => i.id === state.pet.equipped.color)?.color || '#8cc8ff';
 const petMood = () => state.pet.mood === 'happy' ? 'Happy' : state.pet.mood === 'hungry' ? 'Hungry' : 'Calm';
 const recentDeck = () => findDeck(state.sessions.recent?.deckId || '');
 const save = () => saveState(state);
+
+function ensurePetItemState(){
+  const equipped = state.pet.equipped || {};
+  state.pet.equipped = {
+    hat: equipped.hat || null,
+    color: equipped.color || null,
+    accessory: equipped.accessory || equipped.face || null
+  };
+  if(!Array.isArray(state.pet.inventory)) state.pet.inventory = [];
+  if(!Array.isArray(state.pet.items)) state.pet.items = [];
+  const byId = new Map(state.pet.items.map(entry => [entry.item_id, entry]));
+  state.pet.inventory.forEach(id => {
+    if(byId.has(id)) return;
+    const item = ITEMS.find(i => i.id === id);
+    if(!item) return;
+    byId.set(id, { item_id:id, item_type:toItemType(item), is_equipped:false });
+  });
+  state.pet.items = [...byId.values()].filter(entry => state.pet.inventory.includes(entry.item_id)).map(entry => ({ item_id:entry.item_id, item_type:entry.item_type, is_equipped:false }));
+  PET_TYPES.forEach(type => {
+    const equippedId = state.pet.equipped[type];
+    if(equippedId && !state.pet.inventory.includes(equippedId)) state.pet.equipped[type] = null;
+  });
+  state.pet.items.forEach(entry => {
+    entry.is_equipped = state.pet.equipped[entry.item_type] === entry.item_id;
+  });
+}
+
+ensurePetItemState();
 
 const toast = msg => {
   const t = document.getElementById('toast');
@@ -58,7 +88,7 @@ function render(){
   if(route === 'home') app.innerHTML = renderHomePage({ recentDeck, state, petMood, petColor, xpForLevel });
   else if(route === 'decks') app.innerHTML = renderDecksPage({ myDecks:state.decks.filter(d=>!d.archived), starterDecks:state.starterDecks.filter(d=>!d.archived), archivedDecks:allDecks().filter(d=>d.archived), deckProgress, masteredPct, activeCards, dueCards, showArchive, points:state.user.points });
   else if(route === 'study') renderStudyHub();
-  else app.innerHTML = renderPetPage({ state, items:ITEMS, xpForLevel, petMood, petColor, shopError, feedCost:FEED_COST });
+  else app.innerHTML = renderPetPage({ state, items:ITEMS, xpForLevel, petMood, petColor, shopError, feedCost:FEED_COST, toItemType });
 }
 
 function updatePetMoodOverTime(){
@@ -177,7 +207,7 @@ window.startStudy = (id, mode='flashcard', resume='') => {
   if(mode === 'matching'){
     const terms = cards.slice(0, Math.min(8, cards.length)).map(c => ({ id:c.id, text:c.front, answer:c.back }));
     const answers = [...terms].sort(() => Math.random() - 0.5).map(t => ({ id:t.id, text:t.answer }));
-    study = { cards:terms, index:0, flipped:false, mode, options:[], matching:{ terms, answers, selectedTerm:null, matched:{}, feedback:null }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
+    study = { cards:terms, index:0, flipped:false, mode, options:[], matching:{ terms, answers, selectedTerm:null, matched:{}, feedback:null, mistakes:0, totalMatches:terms.length, locked:false }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
   } else {
     study = { cards, index:0, flipped:false, mode, options:[], results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
   }
@@ -193,8 +223,8 @@ function renderStudyCard(){
 
   if(study.mode === 'matching'){
     const matchedCount = Object.keys(study.matching.matched).length;
-    if(matchedCount >= study.matching.terms.length) return renderStudyComplete(d);
-    app.innerHTML = renderMatchingGamePage({ deckName:d.name, index:matchedCount, total:study.matching.terms.length, matching:study.matching });
+    if(matchedCount >= study.matching.totalMatches) return renderStudyComplete(d);
+    app.innerHTML = renderMatchingGamePage({ deckName:d.name, index:matchedCount, total:study.matching.totalMatches, matching:study.matching });
     study.matching.terms.forEach(t => {
       const btn = document.getElementById(`match-term-${t.id}`);
       if(btn) btn.onclick = () => selectMatchingTerm(t.id);
@@ -223,6 +253,7 @@ window.speakStudyCard = side => {
 };
 window.selectMatchingTerm = termId => {
   if(study.mode !== 'matching') return;
+  if(study.matching.locked) return;
   if(study.matching.matched[termId]) return;
   study.matching.selectedTerm = termId;
   study.matching.feedback = null;
@@ -230,15 +261,28 @@ window.selectMatchingTerm = termId => {
 };
 window.selectMatchingAnswer = answerId => {
   if(study.mode !== 'matching') return;
+  if(study.matching.locked) return;
   const termId = study.matching.selectedTerm;
   if(!termId) return toast('Select a term first');
   const correct = termId === answerId;
   study.matching.feedback = { termId, answerId, correct };
   if(correct){
-    study.matching.matched[termId] = answerId;
-    study.results.studied++;
-    study.results.correct++;
-    study.matching.selectedTerm = null;
+    study.matching.locked = true;
+    renderStudyCard();
+    setTimeout(() => {
+      study.matching.matched[termId] = answerId;
+      study.matching.terms = study.matching.terms.filter(t => t.id !== termId);
+      study.matching.answers = study.matching.answers.filter(a => a.id !== answerId);
+      study.results.studied++;
+      study.results.correct++;
+      study.matching.selectedTerm = null;
+      study.matching.feedback = null;
+      study.matching.locked = false;
+      renderStudyCard();
+    }, 220);
+    return;
+  } else {
+    study.matching.mistakes++;
   }
   renderStudyCard();
 };
@@ -273,8 +317,17 @@ window.answerQuiz = (cardId, selected) => {
 };
 function renderStudyComplete(deck){
   if(study.mode === 'matching'){
-    const reward = awardSession(state, study.results, study.results.correct || study.cards.length, true, allDecks, activeCards);
+    const totalMatches = study.matching.totalMatches;
+    const mistakes = study.matching.mistakes;
+    const basePoints = totalMatches * 10;
+    const finalPoints = Math.max(Math.ceil(basePoints * 0.6), basePoints - mistakes);
+    const baseXp = totalMatches * 5 + 10;
+    const finalXp = Math.max(Math.ceil(baseXp * 0.7), baseXp - mistakes * 2);
+    const reward = awardSession(state, study.results, 0, true, allDecks, activeCards, { customXp:finalXp, customPoints:finalPoints });
     toast(`+${reward.xp} XP · +${reward.points} points`);
+    save();
+    app.innerHTML = `<div class="card"><div class="h1">Session complete</div><div class="small" style="margin-top:6px">Nice work.</div><div class="grid2" style="margin-top:12px"><div class="panel"><div class="small">Total matches</div><div class="h1">${totalMatches}</div></div><div class="panel"><div class="small">Mistakes</div><div class="h1">${mistakes}</div></div><div class="panel"><div class="small">Final XP gained</div><div class="h1">+${study.results.xp}</div></div><div class="panel"><div class="small">Final points earned</div><div class="h1">+${study.results.points}</div></div></div><div style="height:12px"></div><div class="grid2"><button class="btn" onclick="startStudy('${deck.id}','${study.mode}')">Study Again</button><button class="btn secondary" onclick="navigate('home')">Back Home</button></div></div>`;
+    return;
   } else {
     awardSession(state, study.results, 0, true, allDecks, activeCards);
   }
@@ -294,6 +347,7 @@ window.buyItem = id => {
   shopError = '';
   state.user.points -= item.price;
   state.pet.inventory.push(id);
+  state.pet.items.push({ item_id:id, item_type:toItemType(item), is_equipped:false });
   save();
   toast(`${item.name} purchased`);
   render();
@@ -301,13 +355,26 @@ window.buyItem = id => {
 window.equipItem = id => {
   const item = ITEMS.find(i => i.id === id);
   if(!item || !state.pet.inventory.includes(id)) return;
-  state.pet.equipped[item.category] = id;
+  const itemType = toItemType(item);
+  state.pet.items.forEach(entry => {
+    if(entry.item_type === itemType) entry.is_equipped = false;
+  });
+  const selected = state.pet.items.find(entry => entry.item_id === id);
+  if(selected){
+    selected.is_equipped = true;
+    selected.item_type = itemType;
+  }
+  state.pet.equipped[itemType] = id;
   save();
   render();
 };
-window.unequipItem = category => {
-  if(!(category in state.pet.equipped)) return;
-  state.pet.equipped[category] = null;
+window.unequipItem = itemType => {
+  const normalizedType = itemType === 'face' ? 'accessory' : itemType;
+  if(!(normalizedType in state.pet.equipped)) return;
+  const equippedId = state.pet.equipped[normalizedType];
+  const selected = state.pet.items.find(entry => entry.item_id === equippedId);
+  if(selected) selected.is_equipped = false;
+  state.pet.equipped[normalizedType] = null;
   save();
   render();
 };
