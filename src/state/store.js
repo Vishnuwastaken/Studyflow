@@ -10,7 +10,7 @@ export const loadState = () => {
       pet: Object.assign(defaults.pet, raw.pet || {}),
       starterDecks: Array.isArray(raw.starterDecks) && raw.starterDecks.length ? raw.starterDecks.map(normalizeDeck) : defaults.starterDecks,
       decks: Array.isArray(raw.decks) ? raw.decks.map(normalizeDeck) : [],
-      sessions: raw.sessions || { recent:null }
+      sessions: Object.assign({ recent:null, quizLocks:{}, forcedReviewDeckId:null }, raw.sessions || {})
     };
   } catch {
     return createDefaultState();
