@@ -8,6 +8,7 @@ const sentenceSplit = text => text.split(/(?<=[.!?])\s+|\n+/).map(s => clean(s))
 const paragraphSplit = text => text.split(/\n{2,}/).map(p => clean(p)).filter(Boolean);
 const wordTokenize = text => (text.toLowerCase().match(/[a-z0-9][a-z0-9'-]*/g) || []);
 const normalizeText = raw => clean(String(raw || '').replace(/\r/g, '\n').replace(/[^\S\n]+/g, ' ').replace(/\n{3,}/g, '\n\n'));
+const canUseTensorFlow = () => typeof window !== 'undefined' && !!window.tf && typeof window.tf.tensor2d === 'function';
 
 function extractWordFrequency(words){
   const freq = new Map();
@@ -131,6 +132,50 @@ function cardsFromComplexSections(chunks, cards, seen){
   });
 }
 
+function buildTensorVocabulary(sentences){
+  const raw = dedupe(sentences.flatMap(s => wordTokenize(s)).filter(w => w.length > 2 && !stopWords.has(w)));
+  return raw.slice(0, 400);
+}
+
+function sentenceToVector(sentence, vocab){
+  const counts = new Map();
+  wordTokenize(sentence).forEach(w => counts.set(w, (counts.get(w) || 0) + 1));
+  return vocab.map(token => counts.get(token) || 0);
+}
+
+function cosineWithTf(v1, v2){
+  if(!canUseTensorFlow()) return 0;
+  const tf = window.tf;
+  return tf.tidy(() => {
+    const a = tf.tensor2d([v1], [1, v1.length], 'float32');
+    const b = tf.tensor2d([v2], [1, v2.length], 'float32');
+    const numerator = a.mul(b).sum(1);
+    const denom = a.norm('euclidean', 1).mul(b.norm('euclidean', 1)).add(1e-6);
+    return numerator.div(denom).dataSync()[0] || 0;
+  });
+}
+
+function cardFromTensorRelationships(sentences, keyConcepts, cards, seen){
+  if(!canUseTensorFlow() || !sentences.length || !keyConcepts.length) return false;
+  const vocab = buildTensorVocabulary(sentences);
+  if(vocab.length < 20) return false;
+  const sentenceVectors = sentences.map(s => ({ sentence:s, vector:sentenceToVector(s, vocab) }));
+  let added = 0;
+
+  keyConcepts.slice(0, 12).forEach(concept => {
+    const prompt = `${concept.term} definition explanation key detail`;
+    const promptVector = sentenceToVector(prompt, vocab);
+    const best = sentenceVectors
+      .map(item => ({ ...item, score:cosineWithTf(promptVector, item.vector) }))
+      .filter(item => item.sentence.length >= 20 && item.sentence.length <= 190)
+      .sort((a, b) => b.score - a.score)[0];
+    if(!best || best.score < 0.15) return;
+    const addedCard = pushCard(cards, seen, `What best explains ${concept.term}?`, best.sentence);
+    if(addedCard) added++;
+  });
+  return added > 0;
+}
+
 function fallbackCards(sentences, cards, seen){
   for(const s of sentences){
     if(s.length < 24 || s.length > 170) continue;
@@ -158,7 +203,8 @@ export function generateStudyCards(rawText){
   const cards = [];
   const seen = new Set();
   cardFromDefinition(definitions, cards, seen);
-  cardFromConceptSentences(chunks, keyConcepts, cards, seen);
+  const usedTensor = cardFromTensorRelationships(sentences, keyConcepts, cards, seen);
+  if(!usedTensor) cardFromConceptSentences(chunks, keyConcepts, cards, seen);
   cardsFromEntities(sentences, entities, cards, seen);
   cardsFromComplexSections(chunks, cards, seen);
   if(cards.length < 8) fallbackCards(sentences, cards, seen);
@@ -167,7 +213,8 @@ export function generateStudyCards(rawText){
     ...links.map(l => `Reference link found: ${l}`),
     ...entities.dates.map(d => `Date detected: ${d}`),
     ...entities.organizations.map(o => `Organization detected: ${o}`),
-    ...entities.names.slice(0, 6).map(n => `Name detected: ${n}`)
+    ...entities.names.slice(0, 6).map(n => `Name detected: ${n}`),
+    usedTensor ? 'AI mode: TensorFlow.js semantic ranking enabled.' : 'AI mode: Rule-based fallback (TensorFlow.js unavailable).'
   ];
 
   return {

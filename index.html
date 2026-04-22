@@ -7,6 +7,7 @@
 <title>StudyFlow</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
 <style>
 :root{
   --bg:#f5f7fb; --surface:#ffffff; --surface2:#eef3ff; --text:#16202a; --muted:#6d7888;
@@ -70,14 +71,39 @@ textarea{min-height:100px;resize:vertical}
 .reward{display:inline-flex;padding:9px 12px;border-radius:12px;background:var(--accent2);color:var(--accent);font-weight:800}
 .quiz-option.correct{background:var(--successbg)!important;color:var(--text)!important;border:2px solid var(--success)!important}
 .quiz-option.wrong{background:var(--dangerbg)!important;color:var(--text)!important;border:2px solid var(--danger)!important}
+.typed-result{padding:10px 12px;border-radius:12px;border:1px solid var(--border)}
+.typed-result.correct{background:var(--successbg);border-color:var(--success);color:var(--success)}
+.typed-result.wrong{background:var(--dangerbg);border-color:var(--danger);color:var(--danger)}
 .match-option.selected{border:2px solid var(--accent)!important}
 .match-option.correct{background:var(--successbg)!important;border:2px solid var(--success)!important}
 .match-option.wrong{background:var(--dangerbg)!important;border:2px solid var(--danger)!important}
 .pet-wrap{display:flex;align-items:center;justify-content:center}
 .pet{position:relative;width:86px;height:86px}
 .pet.big{width:170px;height:170px}
+.pet.level-up{animation:pet-level-up .45s ease}
 .pet-body{position:absolute;left:50%;top:50%;transform:translate(-50%,-45%);width:64px;height:56px;border-radius:50% 50% 42% 42%;background:var(--pet-color,#8cc8ff);border:2px solid #526377}
 .pet.big .pet-body{width:118px;height:104px;border-width:3px}
+.pet-mark{position:absolute;left:50%;top:50%;transform:translate(-50%,-15%);width:12px;height:12px;border-radius:50%;opacity:.9}
+.pet.stage-1 .pet-mark{background:#fff3;box-shadow:none}
+.pet.stage-2 .pet-mark{background:#ffffff66;box-shadow:16px 4px 0 #ffffff40}
+.pet.stage-3 .pet-mark{background:#fff;box-shadow:16px 4px 0 #ffffff66,-16px 4px 0 #ffffff55}
+.pet.stage-4 .pet-mark{background:#ffef99;box-shadow:16px 4px 0 #fff0b8,-16px 4px 0 #fff0b8,0 16px 0 #ffe36f}
+.pet.stage-5 .pet-mark{background:#ffd447;box-shadow:18px 2px 0 #ffeb7a,-18px 2px 0 #ffeb7a,0 18px 0 #ffc93b,0 -12px 0 #ffde73}
+.pet.stage-1 .ear{top:16px}
+.pet.stage-2 .ear{top:13px}
+.pet.stage-3 .ear{top:11px}
+.pet.stage-4 .ear{top:9px}
+.pet.stage-5 .ear{top:7px}
+.pet.stage-1 .pet-body{width:56px;height:50px}
+.pet.stage-2 .pet-body{width:60px;height:54px}
+.pet.stage-3 .pet-body{width:64px;height:56px}
+.pet.stage-4 .pet-body{width:68px;height:60px}
+.pet.stage-5 .pet-body{width:72px;height:64px}
+.pet.big.stage-1 .pet-body{width:100px;height:88px}
+.pet.big.stage-2 .pet-body{width:108px;height:96px}
+.pet.big.stage-3 .pet-body{width:118px;height:104px}
+.pet.big.stage-4 .pet-body{width:126px;height:112px}
+.pet.big.stage-5 .pet-body{width:136px;height:122px}
 .ear{position:absolute;width:15px;height:18px;background:var(--pet-color,#8cc8ff);border:2px solid #526377;border-radius:60% 60% 20% 20%;top:14px}
 .ear.left{left:18px;transform:rotate(-18deg)} .ear.right{right:18px;transform:rotate(18deg)}
 .pet.big .ear{width:28px;height:34px;top:28px;border-width:3px}.pet.big .ear.left{left:34px}.pet.big .ear.right{right:34px}
@@ -100,6 +126,7 @@ textarea{min-height:100px;resize:vertical}
 .file-chip{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:11px 12px;border-radius:14px;background:var(--surface2);border:1px solid var(--border)}
 .icon{width:34px;height:34px;border-radius:10px;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:18px}
 .kpi{padding:10px;border-radius:14px;border:1px solid var(--border);background:var(--surface2)}
+@keyframes pet-level-up{0%{transform:scale(1)}45%{transform:scale(1.08)}100%{transform:scale(1)}}
 </style>
 </head>
 <body>
