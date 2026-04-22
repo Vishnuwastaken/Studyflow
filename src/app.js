@@ -12,7 +12,7 @@ import { renderPetPage } from './pages/petPage.js';
 
 let state = loadState();
 let route = 'home';
-let study = { cards:[], index:0, flipped:false, mode:'flashcard', options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1, correct:false, lastCorrectIndex:null }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[], mistakes:0} };
+let study = { cards:[], index:0, flipped:false, mode:'flashcard', options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1, correct:false, lastCorrectIndex:null }, typed:{ submitted:false, correct:false, userAnswer:'', correctAnswer:'' }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[], mistakes:0} };
 let showArchive = false;
 let shopError = '';
 const FEED_COST = 8;
@@ -35,6 +35,7 @@ const visibleDecks = () => allDecks().filter(d => !d.archived);
 const canEdit = deck => state.decks.some(d => d.id === deck.id);
 const toItemType = item => item.item_type || (item.category === 'face' ? 'accessory' : item.category);
 const petColor = () => ITEMS.find(i => i.id === state.pet.equipped.color)?.color || '#8cc8ff';
+const petEvolutionStage = () => Math.max(1, Math.min(5, state.pet.level));
 const petMood = () => state.pet.mood === 'happy' ? 'Happy' : state.pet.mood === 'hungry' ? 'Hungry' : 'Calm';
 const recentDeck = () => findDeck(state.sessions.recent?.deckId || '');
 const save = () => saveState(state);
@@ -93,10 +94,10 @@ function render(){
   updatePetMoodOverTime();
   if(state.user.daily.date !== today()) state.user.daily = { date:today(), studied:0 };
   setNav();
-  if(route === 'home') app.innerHTML = renderHomePage({ recentDeck, state, petMood, petColor, xpForLevel });
+  if(route === 'home') app.innerHTML = renderHomePage({ recentDeck, state, petMood, petColor, petEvolutionStage, xpForLevel });
   else if(route === 'decks') app.innerHTML = renderDecksPage({ myDecks:state.decks.filter(d=>!d.archived), starterDecks:state.starterDecks.filter(d=>!d.archived), archivedDecks:allDecks().filter(d=>d.archived), deckProgress, masteredPct, activeCards, dueCards, showArchive, points:state.user.points });
   else if(route === 'study') renderStudyHub();
-  else app.innerHTML = renderPetPage({ state, items:ITEMS, xpForLevel, petMood, petColor, shopError, feedCost:FEED_COST, toItemType });
+  else app.innerHTML = renderPetPage({ state, items:ITEMS, xpForLevel, petMood, petColor, petEvolutionStage, shopError, feedCost:FEED_COST, toItemType });
 }
 
 function updatePetMoodOverTime(){
@@ -192,7 +193,7 @@ window.openDeck = id => {
   const d = findDeck(id);
   if(!d) return render();
   const editable = canEdit(d);
-  app.innerHTML = `<div class="card"><div class="space"><div><div class="h1">${esc(d.name)}</div><div class="small">${esc(d.description || '')}</div></div><button class="btn secondary inline" onclick="navigate('decks')">Back</button></div><div style="height:12px"></div><div class="grid3"><button class="btn" onclick="startStudy('${d.id}','flashcard')">Flashcards</button><button class="btn secondary" onclick="startStudy('${d.id}','quiz')">Quiz</button><button class="btn ghost" onclick="startStudy('${d.id}','matching')">Matching Game</button></div>${editable?`<div style="height:8px"></div><div class="grid2"><button class="btn secondary" onclick="showImportDeck('${d.id}')">Import File</button><button class="btn ghost" onclick="showAddCard('${d.id}')">Add Card</button></div>`:''}${!d.archived?`<div style="height:8px"></div><button class="btn warning" onclick="archiveDeck('${d.id}')">Archive Deck</button>`:''}<div style="height:12px"></div><div class="h2">Cards</div><div class="list" style="margin-top:10px">${activeCards(d).map(c=>`<div class="panel"><div class="space"><div class="h3">${esc(c.front)}</div><div class="row"><button class="btn secondary inline" onclick='speakText(${JSON.stringify(c.front)})'>🔊 Front</button><button class="btn secondary inline" onclick='speakText(${JSON.stringify(c.back)})'>🔊 Back</button>${editable?`<button class="btn danger inline" onclick="deleteCard('${d.id}','${c.id}')">Delete</button>`:''}</div></div><div class="small" style="margin-top:6px">${esc(c.back)}</div></div>`).join('') || '<div class="empty">No cards yet.</div>'}</div></div>`;
+  app.innerHTML = `<div class="card"><div class="space"><div><div class="h1">${esc(d.name)}</div><div class="small">${esc(d.description || '')}</div></div><button class="btn secondary inline" onclick="navigate('decks')">Back</button></div><div style="height:12px"></div><div class="row wrap"><button class="btn inline" onclick="startStudy('${d.id}','flashcard')">Flashcards</button><button class="btn secondary inline" onclick="startStudy('${d.id}','quiz')">Quiz</button><button class="btn ghost inline" onclick="startStudy('${d.id}','typed')">Type Answer</button><button class="btn ghost inline" onclick="startStudy('${d.id}','matching')">Matching Game</button></div>${editable?`<div style="height:8px"></div><div class="grid2"><button class="btn secondary" onclick="showImportDeck('${d.id}')">Import File</button><button class="btn ghost" onclick="showAddCard('${d.id}')">Add Card</button></div>`:''}${!d.archived?`<div style="height:8px"></div><button class="btn warning" onclick="archiveDeck('${d.id}')">Archive Deck</button>`:''}<div style="height:12px"></div><div class="h2">Cards</div><div class="list" style="margin-top:10px">${activeCards(d).map(c=>`<div class="panel"><div class="space"><div class="h3">${esc(c.front)}</div><div class="row"><button class="btn secondary inline" onclick='speakText(${JSON.stringify(c.front)})'>🔊 Front</button><button class="btn secondary inline" onclick='speakText(${JSON.stringify(c.back)})'>🔊 Back</button>${editable?`<button class="btn danger inline" onclick="deleteCard('${d.id}','${c.id}')">Delete</button>`:''}</div></div><div class="small" style="margin-top:6px">${esc(c.back)}</div></div>`).join('') || '<div class="empty">No cards yet.</div>'}</div></div>`;
 };
 
 window.showAddCard = id => app.innerHTML = `<div class="card"><div class="h1">Add Cards Manually</div><input id="card-front" placeholder="Front of card"><textarea id="card-back" placeholder="Back of card"></textarea><div class="grid2"><button class="btn" onclick="addCard('${id}')">Save</button><button class="btn secondary" onclick="openDeck('${id}')">Cancel</button></div></div>`;
@@ -222,9 +223,9 @@ window.startStudy = (id, mode='flashcard', resume='') => {
   if(mode === 'matching'){
     const terms = preparedCards.slice(0, Math.min(8, preparedCards.length)).map(c => ({ id:c.id, text:c.front, answer:c.back }));
     const answers = shuffle(terms).map(t => ({ id:t.id, text:t.answer }));
-    study = { cards:terms, index:0, flipped:false, mode, options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1, correct:false, lastCorrectIndex:null }, matching:{ terms, answers, selectedTerm:null, matched:{}, feedback:null, mistakes:0, totalMatches:terms.length, locked:false }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[], mistakes:0} };
+    study = { cards:terms, index:0, flipped:false, mode, options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1, correct:false, lastCorrectIndex:null }, typed:{ submitted:false, correct:false, userAnswer:'', correctAnswer:'' }, matching:{ terms, answers, selectedTerm:null, matched:{}, feedback:null, mistakes:0, totalMatches:terms.length, locked:false }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[], mistakes:0} };
   } else {
-    study = { cards:preparedCards, index:0, flipped:false, mode, options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1, correct:false, lastCorrectIndex:null }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[], mistakes:0} };
+    study = { cards:preparedCards, index:0, flipped:false, mode, options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1, correct:false, lastCorrectIndex:null }, typed:{ submitted:false, correct:false, userAnswer:'', correctAnswer:'' }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[], mistakes:0} };
   }
   state.sessions.recent = { deckId:id, mode, remaining:preparedCards.map(c => c.id) };
   save();
@@ -260,12 +261,25 @@ function renderStudyCard(){
     });
     return;
   }
+  if(study.mode === 'typed'){
+    app.innerHTML = renderStudyCardPage({ deckName:d.name, index:study.index+1, total:study.cards.length, mode:'Type Answer Mode', text:c.front, options:[], showAudio:true, typedState:study.typed });
+    if(!study.typed.submitted){
+      const input = document.getElementById('typed-answer-input');
+      if(input){
+        input.focus();
+        input.addEventListener('keydown', e => {
+          if(e.key === 'Enter') window.submitTypedAnswer();
+        });
+      }
+    }
+    return;
+  }
   app.innerHTML = renderStudyCardPage({ deckName:d.name, index:study.index+1, total:study.cards.length, mode:'Flashcard mode', text:study.flipped ? c.back : c.front, flipped:study.flipped, options:[], showAudio:true });
 }
 window.speakStudyCard = side => {
   const c = study.cards[study.index];
   if(!c) return;
-  if(study.mode === 'flashcard' && !study.flipped) return toast('Reveal the answer first');
+  if(study.mode === 'flashcard' && side === 'back' && !study.flipped) return toast('Reveal the answer first');
   speakText(side === 'back' ? c.back : c.front);
 };
 window.selectMatchingTerm = termId => {
@@ -345,6 +359,32 @@ window.answerQuiz = (cardId, selected) => {
   setTimeout(() => {
     if(study.mode === 'quiz' && study.quiz.answered) window.nextQuizQuestion();
   }, 1000);
+};
+window.submitTypedAnswer = () => {
+  if(study.mode !== 'typed' || study.typed.submitted) return;
+  const c = study.cards[study.index];
+  if(!c) return;
+  const typed = document.getElementById('typed-answer-input')?.value || '';
+  const normalizedTyped = typed.trim().toLowerCase();
+  const normalizedAnswer = String(c.back || '').trim().toLowerCase();
+  const isCorrect = !!normalizedTyped && normalizedTyped === normalizedAnswer;
+  study.typed = { submitted:true, correct:isCorrect, userAnswer:typed, correctAnswer:c.back };
+  updateCardSchedule(c, isCorrect ? 'easy' : 'hard');
+  study.results.studied++;
+  if(isCorrect) study.results.correct++;
+  else study.results.mistakes++;
+  const reward = awardSession(state, study.results, 1, false, allDecks, activeCards, isCorrect ? {} : { customXp:1, customPoints:1 });
+  toast(`${isCorrect ? 'Correct' : 'Incorrect'} · +${reward.xp} XP · +${reward.points} points`);
+  state.user.daily.studied++;
+  state.sessions.recent.remaining = state.sessions.recent.remaining.filter(id => id !== c.id);
+  save();
+  renderStudyCard();
+};
+window.nextTypedQuestion = () => {
+  if(study.mode !== 'typed' || !study.typed.submitted) return;
+  study.index++;
+  study.typed = { submitted:false, correct:false, userAnswer:'', correctAnswer:'' };
+  renderStudyCard();
 };
 window.nextQuizQuestion = () => {
   if(study.mode !== 'quiz' || !study.quiz.answered) return;

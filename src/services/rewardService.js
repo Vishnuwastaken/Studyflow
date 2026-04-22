@@ -7,9 +7,10 @@ export function addXP(state, n, toast){
   while(state.pet.xp >= xpForLevel(state.pet.level)){
     state.pet.xp -= xpForLevel(state.pet.level);
     state.pet.level++;
+    state.pet.lastLevelUpAt = Date.now();
     state.pet.mood = 'excited';
     state.pet.lastMoodAt = Date.now();
-    toast?.('Pet leveled up');
+    toast?.(`Pet leveled up to ${state.pet.level}`);
   }
 }
 

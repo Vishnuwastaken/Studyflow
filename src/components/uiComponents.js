@@ -2,8 +2,9 @@ import { esc } from '../utils/helpers.js';
 
 export const renderProgressBar = percent => `<div class="progress"><div style="width:${Math.max(0,Math.min(100,percent))}%"></div></div>`;
 
-export function renderPetDisplay({ big=false, color='#8cc8ff', hat=false, glasses=false, mood='calm' }){
-  return `<div class="pet-wrap"><div class="pet ${big ? 'big' : ''}" style="--pet-color:${color}"><div class="ear left"></div><div class="ear right"></div><div class="pet-body"></div>${hat?'<div class="hat"></div>':''}${glasses?'<div class="glasses"><i></i></div>':''}<div class="eye left"></div><div class="eye right"></div><div class="mouth ${mood}"></div></div></div>`;
+export function renderPetDisplay({ big=false, color='#8cc8ff', hat=false, glasses=false, mood='calm', stage=1, celebrate=false }){
+  const evolutionClass = `stage-${Math.max(1, Math.min(5, stage || 1))}`;
+  return `<div class="pet-wrap"><div class="pet ${big ? 'big' : ''} ${evolutionClass} ${celebrate ? 'level-up' : ''}" style="--pet-color:${color}"><div class="ear left"></div><div class="ear right"></div><div class="pet-body"></div><div class="pet-mark"></div>${hat?'<div class="hat"></div>':''}${glasses?'<div class="glasses"><i></i></div>':''}<div class="eye left"></div><div class="eye right"></div><div class="mouth ${mood}"></div></div></div>`;
 }
 
 export const renderFlashcardComponent = ({text, flipped=false}) => `<div class="flashcard ${flipped ? 'flipped' : ''}">${esc(text)}</div>`;
