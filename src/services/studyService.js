@@ -26,7 +26,7 @@ export function updateCardSchedule(card, rating){
   card.stats = s;
 }
 
-export const makeQuizOptions = (deck, card) => {
+export const makeQuizOptions = (deck, card, avoidCorrectIndex = null) => {
   const others = [...new Set(activeCards(deck).filter(c => c.id !== card.id).map(c => c.back).filter(Boolean))];
   for(let i=others.length-1;i>0;i--){
     const j = Math.floor(Math.random() * (i + 1));
@@ -43,6 +43,13 @@ export const makeQuizOptions = (deck, card) => {
   for(let i=options.length-1;i>0;i--){
     const j = Math.floor(Math.random() * (i + 1));
     [options[i], options[j]] = [options[j], options[i]];
+  }
+  if(Number.isInteger(avoidCorrectIndex) && options.length > 1){
+    const currentCorrectIndex = options.findIndex(o => o.correct);
+    if(currentCorrectIndex === avoidCorrectIndex){
+      const swapIndex = (currentCorrectIndex + 1 + Math.floor(Math.random() * (options.length - 1))) % options.length;
+      [options[currentCorrectIndex], options[swapIndex]] = [options[swapIndex], options[currentCorrectIndex]];
+    }
   }
   return options;
 };

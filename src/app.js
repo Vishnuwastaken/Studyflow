@@ -12,7 +12,7 @@ import { renderPetPage } from './pages/petPage.js';
 
 let state = loadState();
 let route = 'home';
-let study = { cards:[], index:0, flipped:false, mode:'flashcard', options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1 }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
+let study = { cards:[], index:0, flipped:false, mode:'flashcard', options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1, correct:false, lastCorrectIndex:null }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[], mistakes:0} };
 let showArchive = false;
 let shopError = '';
 const FEED_COST = 8;
@@ -21,6 +21,14 @@ const MOOD_DECAY_MS = 1000 * 60 * 60 * 8;
 const PET_TYPES = ['hat','color','accessory'];
 
 const app = document.getElementById('app');
+const shuffle = arr => {
+  const copy = [...arr];
+  for(let i = copy.length - 1; i > 0; i--){
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+};
 const findDeck = id => state.decks.find(d => d.id === id) || state.starterDecks.find(d => d.id === id);
 const allDecks = () => [...state.decks, ...state.starterDecks];
 const visibleDecks = () => allDecks().filter(d => !d.archived);
@@ -202,16 +210,23 @@ window.addCard = id => {
 window.startStudy = (id, mode='flashcard', resume='') => {
   const d = findDeck(id);
   if(!d || !activeCards(d).length) return toast('This deck has no cards yet');
-  const base = activeCards(d);
-  const cards = (resume && state.sessions.recent?.remaining?.length) ? state.sessions.recent.remaining.map(cid => base.find(c => c.id === cid)).filter(Boolean) : (dueCards(d).length ? dueCards(d) : base.slice());
-  if(mode === 'matching'){
-    const terms = cards.slice(0, Math.min(8, cards.length)).map(c => ({ id:c.id, text:c.front, answer:c.back }));
-    const answers = [...terms].sort(() => Math.random() - 0.5).map(t => ({ id:t.id, text:t.answer }));
-    study = { cards:terms, index:0, flipped:false, mode, options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1 }, matching:{ terms, answers, selectedTerm:null, matched:{}, feedback:null, mistakes:0, totalMatches:terms.length, locked:false }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
-  } else {
-    study = { cards, index:0, flipped:false, mode, options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1 }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
+  if(mode === 'quiz' && state.sessions.quizLocks?.[id]){
+    toast('Quiz locked. Review all flashcards first.');
+    return window.startStudy(id, 'flashcard');
   }
-  state.sessions.recent = { deckId:id, mode, remaining:cards.map(c => c.id) };
+  const base = activeCards(d);
+  const shouldForceFullDeck = mode === 'flashcard' && state.sessions.forcedReviewDeckId === id;
+  const dueOrAll = shouldForceFullDeck ? base.slice() : (dueCards(d).length ? dueCards(d) : base.slice());
+  const cards = (!shouldForceFullDeck && resume && state.sessions.recent?.remaining?.length) ? state.sessions.recent.remaining.map(cid => base.find(c => c.id === cid)).filter(Boolean) : dueOrAll;
+  const preparedCards = mode === 'quiz' ? shuffle(cards) : cards;
+  if(mode === 'matching'){
+    const terms = preparedCards.slice(0, Math.min(8, preparedCards.length)).map(c => ({ id:c.id, text:c.front, answer:c.back }));
+    const answers = shuffle(terms).map(t => ({ id:t.id, text:t.answer }));
+    study = { cards:terms, index:0, flipped:false, mode, options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1, correct:false, lastCorrectIndex:null }, matching:{ terms, answers, selectedTerm:null, matched:{}, feedback:null, mistakes:0, totalMatches:terms.length, locked:false }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[], mistakes:0} };
+  } else {
+    study = { cards:preparedCards, index:0, flipped:false, mode, options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1, correct:false, lastCorrectIndex:null }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[], mistakes:0} };
+  }
+  state.sessions.recent = { deckId:id, mode, remaining:preparedCards.map(c => c.id) };
   save();
   renderStudyCard();
 };
@@ -236,7 +251,7 @@ function renderStudyCard(){
     return;
   }
   if(study.mode === 'quiz'){
-    if(!study.options.length) study.options = makeQuizOptions(d, c);
+    if(!study.options.length) study.options = makeQuizOptions(d, c, study.quiz.lastCorrectIndex);
     if(study.quiz.correctIndex < 0) study.quiz.correctIndex = study.options.findIndex(o => o.correct);
     app.innerHTML = renderStudyCardPage({ deckName:d.name, index:study.index+1, total:study.cards.length, mode:'quiz', text:c.front, options:study.options, showAudio:true, quizState:study.quiz });
     study.options.forEach((o, i) => {
@@ -250,6 +265,7 @@ function renderStudyCard(){
 window.speakStudyCard = side => {
   const c = study.cards[study.index];
   if(!c) return;
+  if(study.mode === 'flashcard' && !study.flipped) return toast('Reveal the answer first');
   speakText(side === 'back' ? c.back : c.front);
 };
 window.selectMatchingTerm = termId => {
@@ -315,12 +331,13 @@ window.answerQuiz = (cardId, selected) => {
   if(!c || c.id !== cardId || study.quiz.answered) return;
   const correctIndex = study.quiz.correctIndex >= 0 ? study.quiz.correctIndex : study.options.findIndex(o => o.correct);
   const isCorrect = selected === correctIndex;
-  study.quiz = { answered:true, selectedIndex:selected, correctIndex };
+  study.quiz = { answered:true, selectedIndex:selected, correctIndex, correct:isCorrect, lastCorrectIndex:correctIndex };
   updateCardSchedule(c, isCorrect ? 'easy' : 'hard');
   study.results.studied++;
   if(isCorrect) study.results.correct++;
-  const reward = awardSession(state, study.results, 1, false, allDecks, activeCards);
-  toast(`${isCorrect ? 'Correct' : 'Incorrect'} · +${reward.xp} XP · +${reward.points} points`);
+  else study.results.mistakes++;
+  const reward = awardSession(state, study.results, 1, false, allDecks, activeCards, isCorrect ? {} : { customXp:1, customPoints:1 });
+  toast(`${isCorrect ? 'Correct' : 'Incorrect – keep practicing'} · +${reward.xp} XP · +${reward.points} points`);
   state.user.daily.studied++;
   state.sessions.recent.remaining = state.sessions.recent.remaining.filter(id => id !== c.id);
   save();
@@ -333,7 +350,7 @@ window.nextQuizQuestion = () => {
   if(study.mode !== 'quiz' || !study.quiz.answered) return;
   study.index++;
   study.options = [];
-  study.quiz = { answered:false, selectedIndex:null, correctIndex:-1 };
+  study.quiz = { answered:false, selectedIndex:null, correctIndex:-1, correct:false, lastCorrectIndex:study.quiz.lastCorrectIndex };
   renderStudyCard();
 };
 function renderStudyComplete(deck){
@@ -351,6 +368,18 @@ function renderStudyComplete(deck){
     return;
   } else {
     awardSession(state, study.results, 0, true, allDecks, activeCards);
+  }
+  if(study.mode === 'flashcard' && state.sessions.forcedReviewDeckId === deck.id){
+    state.sessions.forcedReviewDeckId = null;
+    state.sessions.quizLocks = Object.assign({}, state.sessions.quizLocks, { [deck.id]:false });
+    toast('Great review. Quiz unlocked.');
+  }
+  if(study.mode === 'quiz' && study.results.mistakes > 0){
+    state.sessions.quizLocks = Object.assign({}, state.sessions.quizLocks, { [deck.id]:true });
+    state.sessions.forcedReviewDeckId = deck.id;
+    save();
+    app.innerHTML = `<div class="card"><div class="h1">Session complete</div><div class="small" style="margin-top:6px">You got a few mistakes. You should review the terminology again.</div><div style="height:12px"></div><div class="grid2"><button class="btn" onclick="startStudy('${deck.id}','flashcard')">Review Flashcards</button><button class="btn secondary" onclick="navigate('study')">Back to Study</button></div></div>`;
+    return;
   }
   save();
   app.innerHTML = `<div class="card"><div class="h1">Session complete</div><div class="small" style="margin-top:6px">Nice work.</div><div class="grid2" style="margin-top:12px"><div class="panel"><div class="small">XP gained</div><div class="h1">+${study.results.xp}</div></div><div class="panel"><div class="small">Points earned</div><div class="h1">+${study.results.points}</div></div></div><div style="height:12px"></div><div class="grid2"><button class="btn" onclick="startStudy('${deck.id}','${study.mode}')">Study Again</button><button class="btn secondary" onclick="navigate('home')">Back Home</button></div></div>`;
