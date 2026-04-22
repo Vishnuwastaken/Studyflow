@@ -12,7 +12,7 @@ import { renderPetPage } from './pages/petPage.js';
 
 let state = loadState();
 let route = 'home';
-let study = { cards:[], index:0, flipped:false, mode:'flashcard', options:[], results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
+let study = { cards:[], index:0, flipped:false, mode:'flashcard', options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1 }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
 let showArchive = false;
 let shopError = '';
 const FEED_COST = 8;
@@ -153,9 +153,9 @@ window.processFile = async (targetId='') => {
   }
 };
 
-function showDraftReview({ name, source, summary, cards, references, fallbackText, targetDeckId, fileMeta }){
+function showDraftReview({ name, source, summary, keyConcepts=[], cards, references, fallbackText, targetDeckId, fileMeta }){
   const rows = cards.length ? cards : [{front:'What is the main idea?', back:'Edit this card manually.'}];
-  app.innerHTML = `<div class="card"><div class="space"><div><div class="h1">Review Draft Cards</div><div class="small">${esc(source)} · ${rows.length} drafts</div></div><button class="btn secondary inline" onclick="navigate('decks')">Close</button></div><div style="height:12px"></div><div class="panel"><div class="h3">Summary</div><div class="small" style="margin-top:8px">${esc(summary)}</div>${references.length?`<div style="margin-top:8px" class="tiny">${references.map(esc).join('<br>')}</div>`:''}</div><div style="height:12px"></div><input id="draft-name" value="${esc(name).replace(/"/g,'&quot;')}"><div id="draft-list" class="list" style="margin-top:12px">${rows.map((r,i)=>`<div class="panel" data-row="${i}"><div class="small">Draft ${i+1}</div><input class="draft-front" value="${esc(r.front).replace(/"/g,'&quot;')}"><textarea class="draft-back">${esc(r.back)}</textarea><button class="btn ghost inline" onclick="removeDraft(this)">Delete</button></div>`).join('')}</div><div style="height:12px"></div><button class="btn secondary" onclick="addDraft()">Add Card</button><div style="height:8px"></div><button class="btn" onclick='saveDrafts(${JSON.stringify(targetDeckId || '')}, ${JSON.stringify(fileMeta)}, ${JSON.stringify(fallbackText || '')})'>${targetDeckId ? 'Save to Deck' : 'Create Deck and Save'}</button></div>`;
+  app.innerHTML = `<div class="card"><div class="space"><div><div class="h1">Review Draft Cards</div><div class="small">${esc(source)} · ${rows.length} drafts</div></div><button class="btn secondary inline" onclick="navigate('decks')">Close</button></div><div style="height:12px"></div><div class="panel"><div class="h3">Summary</div><div class="small" style="margin-top:8px">${esc(summary)}</div>${keyConcepts.length?`<div style="margin-top:8px" class="tiny"><strong>Key concepts:</strong> ${keyConcepts.slice(0,10).map(esc).join(', ')}</div>`:''}${references.length?`<div style="margin-top:8px" class="tiny">${references.map(esc).join('<br>')}</div>`:''}</div><div style="height:12px"></div><input id="draft-name" value="${esc(name).replace(/"/g,'&quot;')}"><div id="draft-list" class="list" style="margin-top:12px">${rows.map((r,i)=>`<div class="panel" data-row="${i}"><div class="small">Draft ${i+1}</div><input class="draft-front" value="${esc(r.front).replace(/"/g,'&quot;')}"><textarea class="draft-back">${esc(r.back)}</textarea><button class="btn ghost inline" onclick="removeDraft(this)">Delete</button></div>`).join('')}</div><div style="height:12px"></div><button class="btn secondary" onclick="addDraft()">Add Card</button><div style="height:8px"></div><button class="btn" onclick='saveDrafts(${JSON.stringify(targetDeckId || '')}, ${JSON.stringify(fileMeta)}, ${JSON.stringify(fallbackText || '')})'>${targetDeckId ? 'Save to Deck' : 'Create Deck and Save'}</button></div>`;
 }
 
 window.addDraft = () => {
@@ -207,9 +207,9 @@ window.startStudy = (id, mode='flashcard', resume='') => {
   if(mode === 'matching'){
     const terms = cards.slice(0, Math.min(8, cards.length)).map(c => ({ id:c.id, text:c.front, answer:c.back }));
     const answers = [...terms].sort(() => Math.random() - 0.5).map(t => ({ id:t.id, text:t.answer }));
-    study = { cards:terms, index:0, flipped:false, mode, options:[], matching:{ terms, answers, selectedTerm:null, matched:{}, feedback:null, mistakes:0, totalMatches:terms.length, locked:false }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
+    study = { cards:terms, index:0, flipped:false, mode, options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1 }, matching:{ terms, answers, selectedTerm:null, matched:{}, feedback:null, mistakes:0, totalMatches:terms.length, locked:false }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
   } else {
-    study = { cards, index:0, flipped:false, mode, options:[], results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
+    study = { cards, index:0, flipped:false, mode, options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1 }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[]} };
   }
   state.sessions.recent = { deckId:id, mode, remaining:cards.map(c => c.id) };
   save();
@@ -236,8 +236,9 @@ function renderStudyCard(){
     return;
   }
   if(study.mode === 'quiz'){
-    study.options = makeQuizOptions(d, c);
-    app.innerHTML = renderStudyCardPage({ deckName:d.name, index:study.index+1, total:study.cards.length, mode:'Quiz mode', text:c.front, options:study.options, showAudio:true });
+    if(!study.options.length) study.options = makeQuizOptions(d, c);
+    if(study.quiz.correctIndex < 0) study.quiz.correctIndex = study.options.findIndex(o => o.correct);
+    app.innerHTML = renderStudyCardPage({ deckName:d.name, index:study.index+1, total:study.cards.length, mode:'quiz', text:c.front, options:study.options, showAudio:true, quizState:study.quiz });
     study.options.forEach((o, i) => {
       const btn = document.getElementById(`quiz-opt-${i}`);
       if(btn) btn.onclick = () => answerQuiz(c.id, i);
@@ -283,8 +284,16 @@ window.selectMatchingAnswer = answerId => {
     return;
   } else {
     study.matching.mistakes++;
+    study.matching.locked = true;
+    renderStudyCard();
+    setTimeout(() => {
+      study.matching.selectedTerm = null;
+      study.matching.feedback = null;
+      study.matching.locked = false;
+      renderStudyCard();
+    }, 1300);
+    return;
   }
-  renderStudyCard();
 };
 window.flipStudyCard = () => { study.flipped = !study.flipped; renderStudyCard(); };
 window.rateCard = rating => {
@@ -303,16 +312,28 @@ window.rateCard = rating => {
 };
 window.answerQuiz = (cardId, selected) => {
   const c = study.cards[study.index];
-  if(!c || c.id !== cardId) return;
-  const correctIndex = study.options.findIndex(o => o.correct);
-  updateCardSchedule(c, selected === correctIndex ? 'easy' : 'hard');
+  if(!c || c.id !== cardId || study.quiz.answered) return;
+  const correctIndex = study.quiz.correctIndex >= 0 ? study.quiz.correctIndex : study.options.findIndex(o => o.correct);
+  const isCorrect = selected === correctIndex;
+  study.quiz = { answered:true, selectedIndex:selected, correctIndex };
+  updateCardSchedule(c, isCorrect ? 'easy' : 'hard');
   study.results.studied++;
+  if(isCorrect) study.results.correct++;
   const reward = awardSession(state, study.results, 1, false, allDecks, activeCards);
-  toast(`+${reward.xp} XP · +${reward.points} points`);
+  toast(`${isCorrect ? 'Correct' : 'Incorrect'} · +${reward.xp} XP · +${reward.points} points`);
   state.user.daily.studied++;
   state.sessions.recent.remaining = state.sessions.recent.remaining.filter(id => id !== c.id);
   save();
+  renderStudyCard();
+  setTimeout(() => {
+    if(study.mode === 'quiz' && study.quiz.answered) window.nextQuizQuestion();
+  }, 1000);
+};
+window.nextQuizQuestion = () => {
+  if(study.mode !== 'quiz' || !study.quiz.answered) return;
   study.index++;
+  study.options = [];
+  study.quiz = { answered:false, selectedIndex:null, correctIndex:-1 };
   renderStudyCard();
 };
 function renderStudyComplete(deck){

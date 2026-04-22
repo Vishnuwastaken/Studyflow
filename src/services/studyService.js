@@ -27,12 +27,19 @@ export function updateCardSchedule(card, rating){
 }
 
 export const makeQuizOptions = (deck, card) => {
-  const others = activeCards(deck).filter(c => c.id !== card.id).map(c => c.back);
+  const others = [...new Set(activeCards(deck).filter(c => c.id !== card.id).map(c => c.back).filter(Boolean))];
   for(let i=others.length-1;i>0;i--){
     const j = Math.floor(Math.random() * (i + 1));
     [others[i], others[j]] = [others[j], others[i]];
   }
-  const options = [card.back, ...others.slice(0,3)].map(text => ({ text, correct:text === card.back }));
+  const distractors = others.filter(text => text !== card.back).slice(0,3);
+  let filler = 1;
+  while(distractors.length < 3){
+    distractors.push(`Alternative answer ${filler}`);
+    filler++;
+  }
+  const optionTexts = [card.back, ...distractors];
+  const options = optionTexts.map((text, idx) => ({ text, correct:idx === 0 }));
   for(let i=options.length-1;i>0;i--){
     const j = Math.floor(Math.random() * (i + 1));
     [options[i], options[j]] = [options[j], options[i]];

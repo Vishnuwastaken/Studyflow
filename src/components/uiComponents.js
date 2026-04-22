@@ -8,7 +8,12 @@ export function renderPetDisplay({ big=false, color='#8cc8ff', hat=false, glasse
 
 export const renderFlashcardComponent = ({text, flipped=false}) => `<div class="flashcard ${flipped ? 'flipped' : ''}">${esc(text)}</div>`;
 
-export const renderQuizComponent = options => `<div class="list">${options.map((o,i)=>`<button id="quiz-opt-${i}" class="btn secondary quiz-option">${esc(o.text)}</button>`).join('')}</div>`;
+export const renderQuizComponent = (options, quizState={ answered:false, selectedIndex:null, correctIndex:-1 }) => `<div class="list">${options.map((o,i)=>{
+  const classes = ['btn','secondary','quiz-option'];
+  if(quizState.answered && i === quizState.correctIndex) classes.push('correct');
+  if(quizState.answered && i === quizState.selectedIndex && i !== quizState.correctIndex) classes.push('wrong');
+  return `<button id="quiz-opt-${i}" class="${classes.join(' ')}" ${quizState.answered?'disabled':''}>${esc(o.text)}</button>`;
+}).join('')}</div>`;
 
 export const renderMatchingComponent = ({ terms, answers, selectedTerm, feedback, locked, mistakes }) => `<div><div class="tiny" style="margin-bottom:10px">Mistakes: ${mistakes}</div><div class="grid2"><div><div class="small" style="margin-bottom:8px">Terms</div><div class="list">${terms.map(t=>`<button id="match-term-${t.id}" class="btn secondary match-option ${selectedTerm===t.id?'selected':''} ${feedback?.termId===t.id?(feedback.correct?'correct':'wrong'):''}" ${locked?'disabled':''}>${esc(t.text)}</button>`).join('')}</div></div><div><div class="small" style="margin-bottom:8px">Answers</div><div class="list">${answers.map(a=>`<button id="match-answer-${a.id}" class="btn secondary match-option ${feedback?.answerId===a.id?(feedback.correct?'correct':'wrong'):''}" ${locked?'disabled':''}>${esc(a.text)}</button>`).join('')}</div></div></div></div>`;
 
