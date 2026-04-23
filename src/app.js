@@ -2,7 +2,7 @@ import { uid, esc, today, normalizeAnswerText } from './utils/helpers.js';
 import { ITEMS, defaultCardStats } from './models/dataModels.js';
 import { loadState, saveState } from './state/store.js';
 import { activeCards, dueCards, updateCardSchedule, makeQuizOptions } from './services/studyService.js';
-import { xpForLevel, awardSession } from './services/rewardService.js';
+import { xpForLevel, awardSession, addXP } from './services/rewardService.js';
 import { readFileText } from './services/fileService.js';
 import { generateStudyCards } from './services/aiService.js';
 import { renderHomePage } from './pages/homePage.js';
@@ -551,12 +551,14 @@ window.unequipItem = itemType => {
 window.feedPet = () => {
   if(state.user.points < FEED_COST) return toast('Not enough points to feed');
   state.user.points -= FEED_COST;
+  const feedXp = 2 + Math.floor(Math.random() * 4);
   const moodIndex = MOOD_STEPS.indexOf(state.pet.mood);
   state.pet.mood = MOOD_STEPS[Math.min(MOOD_STEPS.length - 1, Math.max(0, moodIndex) + 1)];
+  addXP(state, feedXp);
   state.pet.lastFedAt = Date.now();
   state.pet.lastMoodAt = Date.now();
   save();
-  toast('Pet fed. Mood improved!');
+  toast(`Pet fed. Mood improved and +${feedXp} XP`);
   render();
 };
 window.archiveDeck = id => {
