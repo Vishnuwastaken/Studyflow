@@ -8,6 +8,10 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://unpkg.com/mammoth/mammoth.browser.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0/dist/tf.min.js"></script>
+<script type="module">
+  import * as transformers from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
+  window.transformers = transformers;
+</script>
 <style>
 :root{
   --bg:#f5f7fb; --surface:#ffffff; --surface2:#eef3ff; --text:#16202a; --muted:#6d7888;
@@ -74,16 +78,20 @@ textarea{min-height:100px;resize:vertical}
 .typed-result{padding:10px 12px;border-radius:12px;border:1px solid var(--border)}
 .typed-result.correct{background:var(--successbg);border-color:var(--success);color:var(--success)}
 .typed-result.wrong{background:var(--dangerbg);border-color:var(--danger);color:var(--danger)}
+
+.typed-active-recall{border:1px solid var(--border);border-radius:16px;padding:14px;background:color-mix(in srgb, var(--surface) 88%, var(--accent2))}
+.typed-input-correct{border-color:var(--success)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--success) 20%, transparent);background:var(--successbg)!important}
+.typed-input-wrong{border-color:var(--danger)!important;box-shadow:0 0 0 2px color-mix(in srgb,var(--danger) 18%, transparent);background:var(--dangerbg)!important}
 .match-option.selected{border:2px solid var(--accent)!important}
 .match-option.correct{background:var(--successbg)!important;border:2px solid var(--success)!important}
 .match-option.wrong{background:var(--dangerbg)!important;border:2px solid var(--danger)!important}
 .pet-wrap{display:flex;align-items:center;justify-content:center}
-.pet{position:relative;width:86px;height:86px}
+.pet{position:relative;width:86px;height:86px;animation:pet-idle 2.8s ease-in-out infinite}
 .pet.big{width:170px;height:170px}
-.pet.level-up{animation:pet-level-up .45s ease}
+.pet.level-up{animation:pet-level-up .45s ease, pet-glow 1.1s ease}
 .pet-body{position:absolute;left:50%;top:50%;transform:translate(-50%,-45%);width:64px;height:56px;border-radius:50% 50% 42% 42%;background:var(--pet-color,#8cc8ff);border:2px solid #526377}
 .pet.big .pet-body{width:118px;height:104px;border-width:3px}
-.pet-mark{position:absolute;left:50%;top:50%;transform:translate(-50%,-15%);width:12px;height:12px;border-radius:50%;opacity:.9}
+.pet-mark{position:absolute;left:50%;top:50%;transform:translate(-50%,-15%);width:12px;height:12px;border-radius:50%;opacity:.9;transition:all .3s ease}
 .pet.stage-1 .pet-mark{background:#fff3;box-shadow:none}
 .pet.stage-2 .pet-mark{background:#ffffff66;box-shadow:16px 4px 0 #ffffff40}
 .pet.stage-3 .pet-mark{background:#fff;box-shadow:16px 4px 0 #ffffff66,-16px 4px 0 #ffffff55}
@@ -113,8 +121,10 @@ textarea{min-height:100px;resize:vertical}
 .mouth{position:absolute;left:50%;top:49px;transform:translateX(-50%);width:14px;height:7px;border-bottom:2px solid #1b2635;border-radius:0 0 18px 18px}
 .mouth.hungry{border-bottom:none;border-top:2px solid #1b2635;border-radius:18px 18px 0 0;top:52px}
 .mouth.happy{height:9px;border-bottom-width:3px}
+.pet.mood-happy{animation:pet-idle 1.5s ease-in-out infinite}
 .pet.big .mouth{top:92px;width:26px;height:12px;border-bottom-width:3px}
 .pet.big .mouth.hungry{top:96px;border-top-width:3px}
+.pet.mood-hungry{animation:pet-idle 4s ease-in-out infinite;opacity:.93}
 .hat{position:absolute;left:50%;top:8px;transform:translateX(-50%);width:34px;height:10px;background:#f3c95e;border-radius:12px 12px 6px 6px;border:2px solid #996f1b}
 .hat:after{content:'';position:absolute;left:50%;transform:translateX(-50%);top:-10px;width:18px;height:12px;background:#f3c95e;border:2px solid #996f1b;border-bottom:none;border-radius:12px 12px 0 0}
 .pet.big .hat{width:66px;height:20px;top:14px;border-width:3px}.pet.big .hat:after{width:36px;height:24px;top:-20px;border-width:3px}
@@ -127,6 +137,8 @@ textarea{min-height:100px;resize:vertical}
 .icon{width:34px;height:34px;border-radius:10px;background:var(--accent2);display:flex;align-items:center;justify-content:center;font-size:18px}
 .kpi{padding:10px;border-radius:14px;border:1px solid var(--border);background:var(--surface2)}
 @keyframes pet-level-up{0%{transform:scale(1)}45%{transform:scale(1.08)}100%{transform:scale(1)}}
+@keyframes pet-idle{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes pet-glow{0%{filter:drop-shadow(0 0 0 transparent)}50%{filter:drop-shadow(0 0 14px color-mix(in srgb,var(--accent) 45%, transparent))}100%{filter:drop-shadow(0 0 0 transparent)}}
 </style>
 </head>
 <body>
