@@ -139,10 +139,10 @@ window.createDeck = () => {
 window.showPasteText = () => {
   app.innerHTML = `<div class="card"><div class="h1">Paste Text</div><div class="small" style="margin-top:6px">Generate concise study cards focused on definitions, key concepts, and facts.</div><div style="height:12px"></div><input id="paste-name" placeholder="New deck name"><textarea id="paste-body" placeholder="Paste your notes here"></textarea><div class="grid2"><button class="btn" onclick="processPastedText()">Create Draft Cards</button><button class="btn secondary" onclick="navigate('decks')">Cancel</button></div></div>`;
 };
-window.processPastedText = () => {
+window.processPastedText = async () => {
   const text = document.getElementById('paste-body').value.trim();
   if(!text) return toast('Paste some text first');
-  const result = generateStudyCards(text);
+  const result = await generateStudyCards(text);
   showDraftReview({ name:document.getElementById('paste-name').value.trim() || 'Imported Notes', source:'Pasted text', ...result, targetDeckId:null, fileMeta:null });
 };
 
@@ -154,7 +154,7 @@ window.processFile = async (targetId='') => {
   if(!file) return toast('Choose a file first');
   try {
     const text = await readFileText(file);
-    const result = generateStudyCards(text || '');
+    const result = await generateStudyCards(text || '');
     const name = targetId ? (findDeck(targetId)?.name || 'Imported Deck') : (document.getElementById('import-name')?.value.trim() || file.name.replace(/\.[^.]+$/, ''));
     showDraftReview({ name, source:file.name, ...result, targetDeckId:targetId || null, fileMeta:{ id:uid('file'), name:file.name, type:file.type || file.name.split('.').pop().toUpperCase(), importedAt:Date.now(), archived:false } });
   } catch (e) {
@@ -262,7 +262,7 @@ function renderStudyCard(){
     return;
   }
   if(study.mode === 'typed'){
-    app.innerHTML = renderStudyCardPage({ deckName:d.name, index:study.index+1, total:study.cards.length, mode:'Type Answer Mode', text:c.front, options:[], showAudio:true, typedState:study.typed });
+    app.innerHTML = renderStudyCardPage({ deckName:d.name, index:study.index+1, total:study.cards.length, mode:'typed', text:c.front, options:[], showAudio:true, typedState:study.typed });
     if(!study.typed.submitted){
       const input = document.getElementById('typed-answer-input');
       if(input){
