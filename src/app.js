@@ -1,4 +1,4 @@
-import { uid, esc, today } from './utils/helpers.js';
+import { uid, esc, today, normalizeAnswerText } from './utils/helpers.js';
 import { ITEMS, defaultCardStats } from './models/dataModels.js';
 import { loadState, saveState } from './state/store.js';
 import { activeCards, dueCards, updateCardSchedule, makeQuizOptions } from './services/studyService.js';
@@ -21,6 +21,7 @@ const MOOD_DECAY_MS = 1000 * 60 * 60 * 8;
 const PET_TYPES = ['hat','color','accessory'];
 
 const app = document.getElementById('app');
+const EXIT_WARNING = 'If you leave now:\n- You will lose all points gained in this session\n- Your pet will lose a level\nAre you sure?';
 const shuffle = arr => {
   const copy = [...arr];
   for(let i = copy.length - 1; i > 0; i--){
@@ -39,6 +40,45 @@ const petEvolutionStage = () => Math.max(1, Math.min(5, state.pet.level));
 const petMood = () => state.pet.mood === 'happy' ? 'Happy' : state.pet.mood === 'hungry' ? 'Hungry' : 'Calm';
 const recentDeck = () => findDeck(state.sessions.recent?.deckId || '');
 const save = () => saveState(state);
+const isSessionActive = () => !!study.cards?.length && study.index < study.cards.length && !!state.sessions.recent?.deckId;
+const isDeckModeLocked = deckId => !!state.sessions.modeLocks?.[deckId];
+
+function applySessionExitPenalty(deckId){
+  const deck = findDeck(deckId);
+  if(study.results?.points) state.user.points = Math.max(0, state.user.points - study.results.points);
+  state.pet.level = Math.max(1, (state.pet.level || 1) - 1);
+  const capXp = xpForLevel(state.pet.level);
+  state.pet.xp = Math.min(state.pet.xp || 0, capXp);
+  study = { cards:[], index:0, flipped:false, mode:'flashcard', options:[], quiz:{ answered:false, selectedIndex:null, correctIndex:-1, correct:false, lastCorrectIndex:null }, typed:{ submitted:false, correct:false, userAnswer:'', correctAnswer:'' }, results:{studied:0, correct:0, xp:0, points:0, unlocks:[], mistakes:0} };
+  state.sessions.recent = null;
+  save();
+  if(deck) toast('Session ended early. Rewards removed and pet lost 1 level.');
+}
+
+function maybeUnlockStudyModes(deckId){
+  const tracker = state.sessions.reviewEasyTracker?.[deckId];
+  if(!tracker?.required?.length) return false;
+  const allEasy = tracker.required.every(cardId => tracker.easyMarked?.[cardId]);
+  if(!allEasy) return false;
+  state.sessions.modeLocks[deckId] = false;
+  state.sessions.quizLocks[deckId] = false;
+  state.sessions.forcedReviewDeckId = null;
+  delete state.sessions.reviewEasyTracker[deckId];
+  save();
+  toast('Great review. Study modes unlocked.');
+  return true;
+}
+
+function lockDeckModes(deckId, requiredCards){
+  state.sessions.modeLocks[deckId] = true;
+  state.sessions.quizLocks[deckId] = true;
+  state.sessions.forcedReviewDeckId = deckId;
+  state.sessions.reviewEasyTracker[deckId] = {
+    required: requiredCards.map(c => c.id),
+    easyMarked: {}
+  };
+  save();
+}
 
 function ensurePetItemState(){
   const equipped = state.pet.equipped || {};
@@ -67,6 +107,13 @@ function ensurePetItemState(){
 }
 
 ensurePetItemState();
+function ensureSessionState(){
+  if(!state.sessions) state.sessions = {};
+  if(!state.sessions.quizLocks) state.sessions.quizLocks = {};
+  if(!state.sessions.modeLocks) state.sessions.modeLocks = {};
+  if(!state.sessions.reviewEasyTracker) state.sessions.reviewEasyTracker = {};
+}
+ensureSessionState();
 
 const toast = msg => {
   const t = document.getElementById('toast');
@@ -120,7 +167,32 @@ function renderStudyHub(){
   app.innerHTML = renderStudyHubPage(ds);
 }
 
-window.navigate = p => { route = p; render(); };
+window.attemptExitSession = () => {
+  if(!isSessionActive()){
+    route = 'study';
+    render();
+    return;
+  }
+  if(!window.confirm(EXIT_WARNING)) return;
+  const deckId = state.sessions.recent?.deckId;
+  applySessionExitPenalty(deckId);
+  route = 'study';
+  render();
+};
+window.navigate = p => {
+  if(isSessionActive() && p !== route){
+    if(!window.confirm(EXIT_WARNING)) return;
+    const deckId = state.sessions.recent?.deckId;
+    applySessionExitPenalty(deckId);
+  }
+  route = p;
+  render();
+};
+window.addEventListener('beforeunload', e => {
+  if(!isSessionActive()) return;
+  e.preventDefault();
+  e.returnValue = 'Session in progress';
+});
 window.toggleArchiveView = () => {
   showArchive = !showArchive;
   render();
@@ -211,8 +283,8 @@ window.addCard = id => {
 window.startStudy = (id, mode='flashcard', resume='') => {
   const d = findDeck(id);
   if(!d || !activeCards(d).length) return toast('This deck has no cards yet');
-  if(mode === 'quiz' && state.sessions.quizLocks?.[id]){
-    toast('Quiz locked. Review all flashcards first.');
+  if(isDeckModeLocked(id) && mode !== 'flashcard'){
+    toast('You need to review all flashcards before trying again.');
     return window.startStudy(id, 'flashcard');
   }
   const base = activeCards(d);
@@ -314,6 +386,7 @@ window.selectMatchingAnswer = answerId => {
     return;
   } else {
     study.matching.mistakes++;
+    study.results.mistakes++;
     study.matching.locked = true;
     renderStudyCard();
     setTimeout(() => {
@@ -329,14 +402,20 @@ window.flipStudyCard = () => { study.flipped = !study.flipped; renderStudyCard()
 window.rateCard = rating => {
   const c = study.cards[study.index];
   if(!c) return;
+  const deckId = state.sessions.recent?.deckId;
   updateCardSchedule(c, rating);
   if(rating === 'hard') study.cards.push(c);
+  const tracker = deckId ? state.sessions.reviewEasyTracker?.[deckId] : null;
+  if(tracker && tracker.required.includes(c.id) && rating === 'easy'){
+    tracker.easyMarked[c.id] = true;
+  }
   study.results.studied++;
   const reward = awardSession(state, study.results, 1, false, allDecks, activeCards);
   toast(`+${reward.xp} XP · +${reward.points} points`);
   state.user.daily.studied++;
   state.sessions.recent.remaining = state.sessions.recent.remaining.filter(id => id !== c.id);
   save();
+  if(deckId) maybeUnlockStudyModes(deckId);
   study.index++; study.flipped = false;
   renderStudyCard();
 };
@@ -365,8 +444,8 @@ window.submitTypedAnswer = () => {
   const c = study.cards[study.index];
   if(!c) return;
   const typed = document.getElementById('typed-answer-input')?.value || '';
-  const normalizedTyped = typed.trim().toLowerCase();
-  const normalizedAnswer = String(c.back || '').trim().toLowerCase();
+  const normalizedTyped = normalizeAnswerText(typed);
+  const normalizedAnswer = normalizeAnswerText(c.back || '');
   const isCorrect = !!normalizedTyped && normalizedTyped === normalizedAnswer;
   study.typed = { submitted:true, correct:isCorrect, userAnswer:typed, correctAnswer:c.back };
   updateCardSchedule(c, isCorrect ? 'easy' : 'hard');
@@ -379,6 +458,9 @@ window.submitTypedAnswer = () => {
   state.sessions.recent.remaining = state.sessions.recent.remaining.filter(id => id !== c.id);
   save();
   renderStudyCard();
+  setTimeout(() => {
+    if(study.mode === 'typed' && study.typed.submitted) window.nextTypedQuestion();
+  }, 3400);
 };
 window.nextTypedQuestion = () => {
   if(study.mode !== 'typed' || !study.typed.submitted) return;
@@ -394,6 +476,7 @@ window.nextQuizQuestion = () => {
   renderStudyCard();
 };
 function renderStudyComplete(deck){
+  state.sessions.recent = null;
   if(study.mode === 'matching'){
     const totalMatches = study.matching.totalMatches;
     const mistakes = study.matching.mistakes;
@@ -410,15 +493,12 @@ function renderStudyComplete(deck){
     awardSession(state, study.results, 0, true, allDecks, activeCards);
   }
   if(study.mode === 'flashcard' && state.sessions.forcedReviewDeckId === deck.id){
-    state.sessions.forcedReviewDeckId = null;
-    state.sessions.quizLocks = Object.assign({}, state.sessions.quizLocks, { [deck.id]:false });
-    toast('Great review. Quiz unlocked.');
+    maybeUnlockStudyModes(deck.id);
   }
-  if(study.mode === 'quiz' && study.results.mistakes > 0){
-    state.sessions.quizLocks = Object.assign({}, state.sessions.quizLocks, { [deck.id]:true });
-    state.sessions.forcedReviewDeckId = deck.id;
+  if(['quiz','matching','typed'].includes(study.mode) && study.results.mistakes > 0){
+    lockDeckModes(deck.id, activeCards(deck));
     save();
-    app.innerHTML = `<div class="card"><div class="h1">Session complete</div><div class="small" style="margin-top:6px">You got a few mistakes. You should review the terminology again.</div><div style="height:12px"></div><div class="grid2"><button class="btn" onclick="startStudy('${deck.id}','flashcard')">Review Flashcards</button><button class="btn secondary" onclick="navigate('study')">Back to Study</button></div></div>`;
+    app.innerHTML = `<div class="card"><div class="h1">Session complete</div><div class="small" style="margin-top:6px">You need to review all flashcards before trying again.</div><div style="height:12px"></div><div class="tiny">Unlock rule: go through every flashcard and mark each one as Easy.</div><div style="height:12px"></div><div class="grid2"><button class="btn" onclick="startStudy('${deck.id}','flashcard')">Review Flashcards</button><button class="btn secondary" onclick="navigate('study')">Back to Study</button></div></div>`;
     return;
   }
   save();

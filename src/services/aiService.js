@@ -143,6 +143,49 @@ function extractDefinitions(sentences){
   return defs;
 }
 
+function groupConceptSentences(sentences, keyConcepts){
+  const groups = new Map();
+  keyConcepts.slice(0, 20).forEach(({ term }) => groups.set(term, []));
+  sentences.forEach(sentence => {
+    keyConcepts.slice(0, 20).forEach(({ term }) => {
+      if(new RegExp(`\\b${term}\\b`, 'i').test(sentence)) groups.get(term).push(sentence);
+    });
+  });
+  return [...groups.entries()]
+    .map(([term, hits]) => ({ term, hits:dedupe(hits).slice(0, 5) }))
+    .filter(group => group.hits.length);
+}
+
+function validateDefinitionContext(definitions, conceptGroups){
+  return definitions.filter(def => {
+    const group = conceptGroups.find(g => g.term.toLowerCase() === def.concept.toLowerCase()) || conceptGroups.find(g => new RegExp(`\\b${def.concept}\\b`, 'i').test(g.term));
+    if(!group) return false;
+    return group.hits.some(hit => new RegExp(`\\b${def.concept}\\b`, 'i').test(hit));
+  });
+}
+
+function simplifyAnswer(answer){
+  return shorten(clean(String(answer || '').replace(/^[,;:\-\s]+|[,;:\-\s]+$/g, '')), 140);
+}
+
+function qualityFilterCards(cards){
+  const seenFront = new Set();
+  const out = [];
+  cards.forEach(card => {
+    const front = clean(card.front);
+    const back = simplifyAnswer(card.back);
+    if(!front || !back) return;
+    if(back.length < 8 || back.length > 150) return;
+    if(/this|that|it|thing/i.test(back) && back.split(' ').length < 6) return;
+    const frontKey = front.toLowerCase();
+    const pairKey = `${frontKey}|${back.toLowerCase()}`;
+    if(seenFront.has(pairKey)) return;
+    seenFront.add(pairKey);
+    out.push({ front, back });
+  });
+  return out;
+}
+
 function detectEntities(text){
   const dates = dedupe((text.match(/\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}-\d{2}-\d{2}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2}, \d{4}|\d{4})\b/gi) || [])).slice(0, 12);
   const organizations = dedupe((text.match(/\b(?:[A-Z][A-Za-z&.-]+(?:\s+[A-Z][A-Za-z&.-]+){0,3}\s(?:University|Institute|Corporation|Corp\.?|Inc\.?|Ltd\.?|Agency|Department|Committee|Council|Organization|Organisation|Company))\b/g) || [])).slice(0, 10);
@@ -225,6 +268,16 @@ function buildRuleBasedCards({ definitions, chunks, keyConcepts, sentences, enti
   if(cards.length < 8) fallbackCards(sentences, cards, seen);
 }
 
+function cardsFromConceptGroups(conceptGroups, cards, seen){
+  conceptGroups.slice(0, 12).forEach(group => {
+    const best = group.hits.find(hit => hit.length >= 20 && hit.length <= 170);
+    if(!best) return;
+    pushCard(cards, seen, `What is ${group.term}?`, best);
+    const support = group.hits.find(hit => /important|used|helps|allows|because|therefore/i.test(hit));
+    if(support) pushCard(cards, seen, `Why is ${group.term} important?`, support);
+  });
+}
+
 async function cardsFromTransformers({ concepts, sections, sentences, cards, seen }){
   if(!concepts.length || !sections.length || !sentences.length) return { used:false, added:0 };
   const conceptPrompts = concepts.slice(0, 12).map(c => `Concept: ${c.term}. Define it and explain what it does.`);
@@ -254,16 +307,21 @@ async function cardsFromTransformers({ concepts, sections, sentences, cards, see
 }
 
 export async function generateStudyCards(rawText){
+  // Stage 1-2: extraction and normalization
   const normalizedText = normalizeText(rawText);
   const paragraphs = dedupe(paragraphSplit(normalizedText));
   const text = paragraphs.join('\n\n');
+  // Stage 3: sentence tokenization
   const sentences = sentenceSplit(text);
+  // Stage 4: keyword extraction
   const sections = chunkByMeaning(paragraphs);
   const chunks = buildConceptChunks(paragraphs);
   const words = wordTokenize(text);
   const freq = extractWordFrequency(words);
   const keyConcepts = pickKeyConcepts(freq);
-  const definitions = extractDefinitions(sentences);
+  // Stage 5-7: concept grouping + definitions + context validation
+  const conceptGroups = groupConceptSentences(sentences, keyConcepts);
+  const definitions = validateDefinitionContext(extractDefinitions(sentences), conceptGroups);
   const summary = shorten(summarize(sentences, freq) || text, 320);
   const entities = detectEntities(text);
   const links = extractLinks(text);
@@ -280,6 +338,21 @@ export async function generateStudyCards(rawText){
   }
 
   if(cards.length < 12) buildRuleBasedCards({ definitions, chunks, keyConcepts, sentences, entities, cards, seen });
+  cardsFromConceptGroups(conceptGroups, cards, seen);
+
+  // Stage 8-10: structured prompts, simplification, quality filter
+  const promptCards = [];
+  const promptSeen = new Set();
+  keyConcepts.slice(0, 10).forEach(concept => {
+    const group = conceptGroups.find(g => g.term === concept.term);
+    const source = group?.hits?.[0];
+    if(!source) return;
+    pushCard(promptCards, promptSeen, `What is ${concept.term}?`, source);
+    pushCard(promptCards, promptSeen, `What does ${concept.term} do?`, source);
+    pushCard(promptCards, promptSeen, `Why is ${concept.term} important?`, source);
+  });
+  promptCards.forEach(card => pushCard(cards, seen, card.front, simplifyAnswer(card.back)));
+  const filteredCards = qualityFilterCards(cards);
 
   const references = [
     ...links.map(l => `Reference link found: ${l}`),
@@ -291,7 +364,7 @@ export async function generateStudyCards(rawText){
   return {
     summary: summary || 'Summary unavailable. Review extracted text and edit cards as needed.',
     keyConcepts: keyConcepts.map(k => k.term),
-    cards: cards.length ? cards.slice(0, 60) : [{ front:'What is the main idea of this file?', back:'Edit this card manually after reviewing extracted text.' }],
+    cards: filteredCards.length ? filteredCards.slice(0, 60) : [{ front:'What is the main idea of this file?', back:'Edit this card manually after reviewing extracted text.' }],
     references,
     fallbackText: text.slice(0, 5000)
   };

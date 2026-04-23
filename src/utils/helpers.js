@@ -12,3 +12,10 @@ export const addDays = (dateStr, n) => {
 export const clean = s => String(s || '').replace(/\s+/g, ' ').trim();
 export const shorten = (s, n) => clean(s).length > n ? `${clean(s).slice(0, n - 1).trim()}…` : clean(s);
 export const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+export const normalizeAnswerText = s => String(s || '')
+  .toLowerCase()
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/[?!.,]/g, '')
+  .replace(/\s+/g, ' ')
+  .trim();

@@ -33,7 +33,7 @@ export const createDefaultState = () => ({
   pet:{ name:'Pebble', level:1, xp:0, mood:'calm', lastMoodAt:Date.now(), lastFedAt:Date.now(), inventory:[], items:[], equipped:{hat:null,accessory:null,color:null} },
   starterDecks: STARTERS.map(seedDeck),
   decks: [],
-  sessions:{recent:null, quizLocks:{}, forcedReviewDeckId:null}
+  sessions:{recent:null, quizLocks:{}, forcedReviewDeckId:null, modeLocks:{}, reviewEasyTracker:{}}
 });
 
 export const normalizeDeck = d => ({
