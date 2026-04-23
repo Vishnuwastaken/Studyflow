@@ -4,10 +4,17 @@ import { extractLinks } from './fileService.js';
 const stopWords = new Set('the and for are with this that from your have has into onto over under about when where what which while been being than then they them their there here because each other using used use via per not but can could should would may might was were will shall do does did done if else also a an in on at by of to as is it or we you he she i our us'.split(' '));
 
 const dedupe = arr => [...new Set(arr)];
+const stripAccents = text => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+const stripLinks = text => String(text || '').replace(/https?:\/\/\S+|www\.\S+/gi, ' ');
+const stripSpecial = text => String(text || '')
+  .replace(/[–—\\\/-]+/g, ' ')
+  .replace(/[^A-Za-z0-9.,:;()'\s]/g, ' ');
+const normalizeSpacing = text => String(text || '').replace(/\s+/g, ' ').trim();
+const toPlainEnglish = text => normalizeSpacing(stripSpecial(stripLinks(stripAccents(text))));
 const sentenceSplit = text => text.split(/(?<=[.!?])\s+|\n+/).map(s => clean(s)).filter(Boolean);
 const paragraphSplit = text => text.split(/\n{2,}/).map(p => clean(p)).filter(Boolean);
 const wordTokenize = text => (text.toLowerCase().match(/[a-z0-9][a-z0-9'-]*/g) || []);
-const normalizeText = raw => clean(String(raw || '')
+const normalizeText = raw => toPlainEnglish(String(raw || '')
   .replace(/\r/g, '\n')
   .replace(/[•●▪◦◆▶►]+/g, ' ')
   .replace(/[ \t]+/g, ' ')
@@ -165,22 +172,28 @@ function validateDefinitionContext(definitions, conceptGroups){
 }
 
 function simplifyAnswer(answer){
-  return shorten(clean(String(answer || '').replace(/^[,;:\-\s]+|[,;:\-\s]+$/g, '')), 140);
+  return shorten(toPlainEnglish(String(answer || '').replace(/^[,;:\-\s]+|[,;:\-\s]+$/g, '')), 140);
 }
 
 function qualityFilterCards(cards){
-  const seenFront = new Set();
+  const seenPairs = new Set();
+  const seenMeaning = new Set();
   const out = [];
   cards.forEach(card => {
-    const front = clean(card.front);
+    const front = cleanCardFront(card.front);
     const back = simplifyAnswer(card.back);
     if(!front || !back) return;
-    if(back.length < 8 || back.length > 150) return;
+    if(front.length > 48 || back.length < 10 || back.length > 150) return;
+    if(back.split(' ').length > 24) return;
+    if(front.split(' ').length > 6) return;
+    if(front.toLowerCase() === back.toLowerCase()) return;
     if(/this|that|it|thing/i.test(back) && back.split(' ').length < 6) return;
-    const frontKey = front.toLowerCase();
-    const pairKey = `${frontKey}|${back.toLowerCase()}`;
-    if(seenFront.has(pairKey)) return;
-    seenFront.add(pairKey);
+    const pairKey = `${front.toLowerCase()}|${back.toLowerCase()}`;
+    if(seenPairs.has(pairKey)) return;
+    const meaningKey = back.toLowerCase().replace(/\b(a|an|the|is|are|was|were|to|of|for|in|on|and)\b/g, '').replace(/\s+/g, ' ').trim();
+    if(seenMeaning.has(meaningKey)) return;
+    seenPairs.add(pairKey);
+    seenMeaning.add(meaningKey);
     out.push({ front, back });
   });
   return out;
@@ -210,8 +223,8 @@ function summarize(sentences, freq){
 }
 
 function pushCard(cards, seen, front, back){
-  const trimmedFront = shorten(clean(front), 90);
-  const trimmedBack = shorten(clean(back), 180);
+  const trimmedFront = shorten(cleanCardFront(front), 48);
+  const trimmedBack = shorten(cleanCardBack(back), 160);
   if(!trimmedFront || !trimmedBack || trimmedBack.length < 8) return false;
   const key = `${trimmedFront.toLowerCase()}|${trimmedBack.toLowerCase()}`;
   if(seen.has(key)) return false;
@@ -220,18 +233,35 @@ function pushCard(cards, seen, front, back){
   return true;
 }
 
+function cleanCardFront(front){
+  return toPlainEnglish(String(front || '')
+    .replace(/^what\s+(is|does|happened in|happens in|did)\s+/i, '')
+    .replace(/^why\s+is\s+/i, '')
+    .replace(/\?+/g, '')
+    .replace(/\b(explain|describe|define)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim());
+}
+
+function cleanCardBack(back){
+  return simplifyAnswer(String(back || '')
+    .replace(/\b(reference link found|date detected|organization detected)\b/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim());
+}
+
 function cardFromDefinition(definitions, cards, seen){
-  definitions.forEach(def => pushCard(cards, seen, `What is ${def.concept}?`, def.definition));
+  definitions.forEach(def => pushCard(cards, seen, def.concept, def.definition));
 }
 
 function cardsFromEntities(sentences, entities, cards, seen){
   entities.dates.slice(0, 8).forEach(date => {
-    const hit = sentences.find(s => s.includes(date) && s.length <= 190) || `Review the key event described for ${date}.`;
-    pushCard(cards, seen, `What happened in ${date}?`, hit);
+    const hit = sentences.find(s => s.includes(date) && s.length <= 190) || `Key event associated with ${date}.`;
+    pushCard(cards, seen, date, hit);
   });
   entities.organizations.slice(0, 6).forEach(org => {
-    const hit = sentences.find(s => s.includes(org) && s.length <= 190) || `${org} appears as an important organization in this material.`;
-    pushCard(cards, seen, `What does ${org} do?`, hit);
+    const hit = sentences.find(s => s.includes(org) && s.length <= 190) || `${org} is an important organization in this material.`;
+    pushCard(cards, seen, org, hit);
   });
 }
 
@@ -240,7 +270,7 @@ function cardsFromComplexSections(chunks, cards, seen){
   denseChunks.forEach(chunk => {
     chunk.sentences.slice(0, 2).forEach((sentence, idx) => {
       if(sentence.length < 24 || sentence.length > 190) return;
-      pushCard(cards, seen, idx === 0 ? 'What is this concept explaining?' : 'What is another key fact from this section?', sentence);
+      pushCard(cards, seen, idx === 0 ? 'Core concept' : 'Key fact', sentence);
     });
   });
 }
@@ -250,7 +280,7 @@ function fallbackCards(sentences, cards, seen){
     if(s.length < 24 || s.length > 170) continue;
     const words = wordTokenize(s).filter(w => w.length > 3 && !stopWords.has(w));
     if(!words.length) continue;
-    const front = `What is ${words[0]}?`;
+    const front = words[0];
     if(pushCard(cards, seen, front, s) && cards.length >= 24) break;
   }
 }
@@ -261,7 +291,7 @@ function buildRuleBasedCards({ definitions, chunks, keyConcepts, sentences, enti
     const hitChunk = chunks.find(chunk => chunk.sentences.some(s => new RegExp(`\\b${concept.term}\\b`, 'i').test(s)));
     const sentence = hitChunk?.sentences.find(s => s.length >= 20 && s.length <= 180 && new RegExp(`\\b${concept.term}\\b`, 'i').test(s));
     if(!sentence) return;
-    pushCard(cards, seen, `What is ${concept.term}?`, sentence);
+    pushCard(cards, seen, concept.term, sentence);
   });
   cardsFromEntities(sentences, entities, cards, seen);
   cardsFromComplexSections(chunks, cards, seen);
@@ -272,9 +302,9 @@ function cardsFromConceptGroups(conceptGroups, cards, seen){
   conceptGroups.slice(0, 12).forEach(group => {
     const best = group.hits.find(hit => hit.length >= 20 && hit.length <= 170);
     if(!best) return;
-    pushCard(cards, seen, `What is ${group.term}?`, best);
+    pushCard(cards, seen, group.term, best);
     const support = group.hits.find(hit => /important|used|helps|allows|because|therefore/i.test(hit));
-    if(support) pushCard(cards, seen, `Why is ${group.term} important?`, support);
+    if(support) pushCard(cards, seen, `${group.term} importance`, support);
   });
 }
 
@@ -297,10 +327,10 @@ async function cardsFromTransformers({ concepts, sections, sentences, cards, see
 
     if(!ranked.length) return;
     const explanation = shorten(ranked.map(r => r.text).join(' '), 180);
-    if(pushCard(cards, seen, `What is ${concepts[idx].term}?`, explanation)) added++;
+    if(pushCard(cards, seen, concepts[idx].term, explanation)) added++;
 
     const relationHit = ranked.find(r => / is | means | refers to | consists of | used to /i.test(r.text));
-    if(relationHit && pushCard(cards, seen, `What does ${concepts[idx].term} do?`, relationHit.text)) added++;
+    if(relationHit && pushCard(cards, seen, `${concepts[idx].term} role`, relationHit.text)) added++;
   });
 
   return { used:added > 0, added };
@@ -347,9 +377,9 @@ export async function generateStudyCards(rawText){
     const group = conceptGroups.find(g => g.term === concept.term);
     const source = group?.hits?.[0];
     if(!source) return;
-    pushCard(promptCards, promptSeen, `What is ${concept.term}?`, source);
-    pushCard(promptCards, promptSeen, `What does ${concept.term} do?`, source);
-    pushCard(promptCards, promptSeen, `Why is ${concept.term} important?`, source);
+    pushCard(promptCards, promptSeen, concept.term, source);
+    pushCard(promptCards, promptSeen, `${concept.term} role`, source);
+    pushCard(promptCards, promptSeen, `${concept.term} importance`, source);
   });
   promptCards.forEach(card => pushCard(cards, seen, card.front, simplifyAnswer(card.back)));
   const filteredCards = qualityFilterCards(cards);
@@ -364,7 +394,7 @@ export async function generateStudyCards(rawText){
   return {
     summary: summary || 'Summary unavailable. Review extracted text and edit cards as needed.',
     keyConcepts: keyConcepts.map(k => k.term),
-    cards: filteredCards.length ? filteredCards.slice(0, 60) : [{ front:'What is the main idea of this file?', back:'Edit this card manually after reviewing extracted text.' }],
+    cards: filteredCards.length ? filteredCards.slice(0, 60) : [{ front:'Main idea', back:'Edit this card manually after reviewing extracted text.' }],
     references,
     fallbackText: text.slice(0, 5000)
   };
