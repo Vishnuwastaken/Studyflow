@@ -21,6 +21,19 @@ const normalizeText = raw => toPlainEnglish(String(raw || '')
   .replace(/\n{3,}/g, '\n\n'));
 
 let embeddingPipelinePromise = null;
+const externalDefinitionCache = new Map();
+const curatedDefinitions = {
+  thermodynamics:'Study of energy heat and work and how they change in physical systems',
+  photosynthesis:'Process plants use to convert light water and carbon dioxide into glucose and oxygen',
+  mitosis:'Cell division process that produces two genetically identical daughter cells',
+  osmosis:'Movement of water across a semipermeable membrane from low solute concentration to high concentration',
+  homeostasis:'Ability of a living system to maintain stable internal conditions',
+  ecosystem:'Community of organisms and their physical environment interacting as a system',
+  democracy:'System of government where people choose leaders through voting',
+  inflation:'Rise in overall prices that reduces the purchasing power of money',
+  algorithm:'Step by step procedure used to solve a problem or perform a computation',
+  database:'Structured collection of data organized for efficient storage retrieval and management'
+};
 
 function cosineSimilarity(v1, v2){
   if(!v1?.length || !v2?.length || v1.length !== v2.length) return 0;
@@ -172,7 +185,120 @@ function validateDefinitionContext(definitions, conceptGroups){
 }
 
 function simplifyAnswer(answer){
-  return shorten(toPlainEnglish(String(answer || '').replace(/^[,;:\-\s]+|[,;:\-\s]+$/g, '')), 140);
+  return shorten(toPlainEnglish(String(answer || '').replace(/^[,;:\-\s]+|[,;:\-\s]+$/g, '')), 140).replace(/\u2026/g, '');
+}
+
+function extractSectionHeadings(text){
+  const lines = String(text || '').split('\n').map(l => clean(l)).filter(Boolean);
+  return dedupe(lines.filter(line => {
+    if(line.length < 3 || line.length > 70) return false;
+    if(/[:.]$/.test(line)) return true;
+    const words = line.split(' ');
+    if(words.length > 7) return false;
+    const titleCaseWords = words.filter(w => /^[A-Z][a-z0-9]+$/.test(w)).length;
+    return titleCaseWords >= Math.max(1, words.length - 1);
+  }).map(line => line.replace(/[:.]+$/g, ''))).slice(0, 16);
+}
+
+function extractKeyPhrases(text){
+  const tokens = wordTokenize(text).filter(w => w.length > 2 && !stopWords.has(w));
+  const phraseFreq = new Map();
+  for(let i = 0; i < tokens.length - 1; i++){
+    const phrase = `${tokens[i]} ${tokens[i + 1]}`;
+    if(stopWords.has(tokens[i]) || stopWords.has(tokens[i + 1])) continue;
+    phraseFreq.set(phrase, (phraseFreq.get(phrase) || 0) + 1);
+  }
+  return [...phraseFreq.entries()]
+    .filter(([, count]) => count > 1)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 10)
+    .map(([phrase]) => phrase);
+}
+
+function buildPriorityTerms({ keyConcepts, headings, phrases }){
+  const raw = [
+    ...headings,
+    ...keyConcepts.map(k => k.term),
+    ...phrases
+  ];
+  const normalized = dedupe(raw
+    .map(cleanCardFront)
+    .map(s => s.replace(/\b(and|or|the|a|an)\b/gi, ' ').replace(/\s+/g, ' ').trim())
+    .filter(Boolean)
+    .filter(term => term.length >= 3 && term.length <= 48));
+  return normalized.slice(0, 24);
+}
+
+function findDefinitionInContext(term, sentences){
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const termPattern = new RegExp(`\\b${escaped}\\b`, 'i');
+  const definitionPatterns = [
+    new RegExp(`\\b${escaped}\\b\\s+is\\s+(.{8,220})`, 'i'),
+    new RegExp(`\\b${escaped}\\b\\s+refers to\\s+(.{8,220})`, 'i'),
+    new RegExp(`definition\\s*[:\\-]\\s*\\b${escaped}\\b\\s*[\\-:]?\\s*(.{8,220})`, 'i')
+  ];
+
+  for(const sentence of sentences){
+    if(!termPattern.test(sentence)) continue;
+    for(const pattern of definitionPatterns){
+      const match = sentence.match(pattern);
+      if(match?.[1]) return simplifyAnswer(match[1]);
+    }
+  }
+
+  const fallback = sentences.find(s => termPattern.test(s) && s.length >= 24 && s.length <= 180);
+  return fallback ? simplifyAnswer(fallback) : '';
+}
+
+async function fetchWikipediaDefinition(term){
+  if(typeof fetch === 'undefined' || !term) return '';
+  const query = encodeURIComponent(term);
+  const url = `https://en.wikipedia.org/api/rest_v1/page/summary/${query}`;
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2200);
+    const response = await fetch(url, { signal:controller.signal, headers:{ accept:'application/json' } });
+    clearTimeout(timeout);
+    if(!response.ok) return '';
+    const data = await response.json();
+    if(!data?.extract || data.type === 'disambiguation') return '';
+    return simplifyAnswer(data.extract);
+  } catch (e) {
+    return '';
+  }
+}
+
+async function getExternalDefinition(term, topicContext=''){
+  const cacheKey = term.toLowerCase();
+  if(externalDefinitionCache.has(cacheKey)) return externalDefinitionCache.get(cacheKey);
+
+  let definition = curatedDefinitions[cacheKey] || '';
+  if(!definition) definition = await fetchWikipediaDefinition(term);
+  if(!definition && topicContext){
+    definition = simplifyAnswer(`${term} is a key concept in ${topicContext} and should be understood by its role and core principles.`);
+  }
+  const cleanDef = simplifyAnswer(definition);
+  externalDefinitionCache.set(cacheKey, cleanDef);
+  return cleanDef;
+}
+
+async function buildHybridDefinitionCards({ priorityTerms, sentences, topicContext, cards, seen }){
+  let externalUsed = 0;
+  for(const term of priorityTerms.slice(0, 16)){
+    const contextDefinition = findDefinitionInContext(term, sentences);
+    const needsExternal = !contextDefinition || contextDefinition.length < 20 || /key concept|important concept|main idea/i.test(contextDefinition);
+    let finalDefinition = contextDefinition;
+    if(needsExternal){
+      const external = await getExternalDefinition(term, topicContext);
+      if(external) {
+        externalUsed++;
+        finalDefinition = external;
+      }
+    }
+    if(!finalDefinition) continue;
+    pushCard(cards, seen, term, finalDefinition);
+  }
+  return externalUsed;
 }
 
 function qualityFilterCards(cards){
@@ -349,6 +475,9 @@ export async function generateStudyCards(rawText){
   const words = wordTokenize(text);
   const freq = extractWordFrequency(words);
   const keyConcepts = pickKeyConcepts(freq);
+  const headings = extractSectionHeadings(normalizedText);
+  const keyPhrases = extractKeyPhrases(text);
+  const priorityTerms = buildPriorityTerms({ keyConcepts, headings, phrases:keyPhrases });
   // Stage 5-7: concept grouping + definitions + context validation
   const conceptGroups = groupConceptSentences(sentences, keyConcepts);
   const definitions = validateDefinitionContext(extractDefinitions(sentences), conceptGroups);
@@ -370,6 +499,9 @@ export async function generateStudyCards(rawText){
   if(cards.length < 12) buildRuleBasedCards({ definitions, chunks, keyConcepts, sentences, entities, cards, seen });
   cardsFromConceptGroups(conceptGroups, cards, seen);
 
+  const topicContext = [headings[0], keyConcepts[0]?.term, keyConcepts[1]?.term].filter(Boolean).join(' ');
+  const externalDefinitionsUsed = await buildHybridDefinitionCards({ priorityTerms, sentences, topicContext, cards, seen });
+
   // Stage 8-10: structured prompts, simplification, quality filter
   const promptCards = [];
   const promptSeen = new Set();
@@ -388,13 +520,14 @@ export async function generateStudyCards(rawText){
     ...links.map(l => `Reference link found: ${l}`),
     ...entities.dates.map(d => `Date detected: ${d}`),
     ...entities.organizations.map(o => `Organization detected: ${o}`),
+    externalDefinitionsUsed ? `External knowledge used for ${externalDefinitionsUsed} term definitions.` : 'External knowledge unavailable or not needed. Used document grounded definitions.',
     transformerUsed ? 'AI mode: Transformers.js semantic analysis enabled.' : 'AI mode: Rule-based fallback (Transformers.js unavailable).'
   ];
 
   return {
     summary: summary || 'Summary unavailable. Review extracted text and edit cards as needed.',
-    keyConcepts: keyConcepts.map(k => k.term),
-    cards: filteredCards.length ? filteredCards.slice(0, 60) : [{ front:'Main idea', back:'Edit this card manually after reviewing extracted text.' }],
+    keyConcepts: dedupe([...priorityTerms, ...keyConcepts.map(k => k.term)]).slice(0, 24),
+    cards: filteredCards.length ? filteredCards.slice(0, 36) : [{ front:'Main idea', back:'Edit this card manually after reviewing extracted text.' }],
     references,
     fallbackText: text.slice(0, 5000)
   };
