@@ -2,6 +2,7 @@ import { clean, shorten } from '../utils/helpers.js';
 import { extractLinks } from './fileService.js';
 
 const stopWords = new Set('the and for are with this that from your have has into onto over under about when where what which while been being than then they them their there here because each other using used use via per not but can could should would may might was were will shall do does did done if else also a an in on at by of to as is it or we you he she i our us'.split(' '));
+const genericTerms = new Set(['slide','section','topic','important','overview','introduction','summary','main','concept','key']);
 
 const dedupe = arr => [...new Set(arr)];
 const stripAccents = text => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -19,6 +20,15 @@ const normalizeText = raw => toPlainEnglish(String(raw || '')
   .replace(/[•●▪◦◆▶►]+/g, ' ')
   .replace(/[ \t]+/g, ' ')
   .replace(/\n{3,}/g, '\n\n'));
+const normalizeDocumentText = raw => String(raw || '')
+  .replace(/\r/g, '\n')
+  .replace(/[ \t]+/g, ' ')
+  .replace(/\n{3,}/g, '\n\n')
+  .split('\n')
+  .map(line => toPlainEnglish(line))
+  .join('\n')
+  .replace(/\n{3,}/g, '\n\n')
+  .trim();
 
 let embeddingPipelinePromise = null;
 const externalDefinitionCache = new Map();
@@ -200,6 +210,105 @@ function extractSectionHeadings(text){
   }).map(line => line.replace(/[:.]+$/g, ''))).slice(0, 16);
 }
 
+function splitSlideSections(rawText){
+  const lines = String(rawText || '')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map(line => clean(toPlainEnglish(line)))
+    .filter(Boolean);
+  const sections = [];
+  let current = null;
+
+  const isLikelyHeading = (line, idx) => {
+    if(line.length < 3 || line.length > 90) return false;
+    if(/^(slide|chapter|module|lesson|unit)\s+\d+/i.test(line)) return true;
+    if(/[:.]$/.test(line) && line.split(' ').length <= 10) return true;
+    const words = line.split(' ');
+    if(words.length > 10) return false;
+    const titleCaseWords = words.filter(w => /^[A-Z][a-z0-9]{1,}$/.test(w)).length;
+    if(titleCaseWords >= Math.max(1, words.length - 1)) return true;
+    return idx === 0;
+  };
+
+  lines.forEach((line, idx) => {
+    const looksLikeHeading = isLikelyHeading(line, idx);
+    if(!current || looksLikeHeading){
+      if(current && (current.bullets.length || current.body.length)) sections.push(current);
+      current = { heading:line, bullets:[], body:[], emphasized:[] };
+      return;
+    }
+    if(line.split(' ').length <= 18) current.bullets.push(line);
+    else current.body.push(line);
+    if(/[A-Z]{3,}/.test(line)) {
+      const matches = line.match(/\b[A-Z]{3,}(?:\s+[A-Z]{2,})?\b/g) || [];
+      current.emphasized.push(...matches);
+    }
+  });
+  if(current && (current.bullets.length || current.body.length || current.heading)) sections.push(current);
+  return sections;
+}
+
+function extractSectionConcepts(section, globalFreq){
+  const block = [section.heading, ...section.bullets, ...section.body].join(' ');
+  const localTokens = wordTokenize(block).filter(w => w.length > 2 && !stopWords.has(w));
+  const localFreq = extractWordFrequency(localTokens);
+  const localTop = [...localFreq.entries()]
+    .sort((a, b) => (b[1] * 2 + (globalFreq.get(b[0]) || 0)) - (a[1] * 2 + (globalFreq.get(a[0]) || 0)))
+    .slice(0, 6)
+    .map(([term]) => term);
+  const headingTerms = section.heading
+    .split(/[^A-Za-z0-9]+/)
+    .map(cleanCardFront)
+    .filter(Boolean)
+    .filter(t => t.length > 2 && !stopWords.has(t.toLowerCase()));
+  return dedupe([...section.emphasized.map(cleanCardFront), ...headingTerms, ...localTop]).slice(0, 8);
+}
+
+function contextForConcept(term, section, sentences){
+  const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const termPattern = new RegExp(`\\b${escaped}\\b`, 'i');
+  const sectionSentences = sentenceSplit([section.heading, ...section.bullets, ...section.body].join('. '));
+  const scoped = sectionSentences.filter(s => termPattern.test(s));
+  const neighborhood = scoped.length ? scoped : sentences.filter(s => termPattern.test(s)).slice(0, 4);
+  return dedupe(neighborhood).slice(0, 4);
+}
+
+function generateDefinitionFromContext(term, contextHits, section){
+  const fromContext = findDefinitionInContext(term, contextHits);
+  if(fromContext) return fromContext;
+  const bullets = section.bullets.find(b => new RegExp(`\\b${term}\\b`, 'i').test(b));
+  if(bullets) return simplifyAnswer(bullets);
+  const headingHint = section.heading && section.heading.toLowerCase() !== term.toLowerCase()
+    ? `${term} in this section relates to ${section.heading}.`
+    : `${term} is a core concept in this document.`;
+  return simplifyAnswer(headingHint);
+}
+
+function cardsFromStructuredSections({ sections, sentences, globalFreq, cards, seen }){
+  sections.forEach(section => {
+    const sectionConcepts = extractSectionConcepts(section, globalFreq);
+    const density = section.bullets.length + sentenceSplit(section.body.join('. ')).length;
+    const maxCardsForSection = density >= 12 ? 6 : density >= 7 ? 4 : 2;
+    let added = 0;
+
+    sectionConcepts.forEach(term => {
+      if(added >= maxCardsForSection) return;
+      const contextHits = contextForConcept(term, section, sentences);
+      if(!contextHits.length) return;
+      const definition = generateDefinitionFromContext(term, contextHits, section);
+      if(pushCard(cards, seen, term, definition)) added++;
+    });
+
+    if(added < maxCardsForSection){
+      const bullets = section.bullets.slice(0, maxCardsForSection - added);
+      bullets.forEach(bullet => {
+        const term = cleanCardFront(section.heading || bullet.split(' ').slice(0, 3).join(' '));
+        pushCard(cards, seen, term, bullet);
+      });
+    }
+  });
+}
+
 function extractKeyPhrases(text){
   const tokens = wordTokenize(text).filter(w => w.length > 2 && !stopWords.has(w));
   const phraseFreq = new Map();
@@ -310,6 +419,7 @@ function qualityFilterCards(cards){
     const back = simplifyAnswer(card.back);
     if(!front || !back) return;
     if(front.length > 48 || back.length < 10 || back.length > 150) return;
+    if(genericTerms.has(front.toLowerCase())) return;
     if(back.split(' ').length > 24) return;
     if(front.split(' ').length > 6) return;
     if(front.toLowerCase() === back.toLowerCase()) return;
@@ -360,13 +470,15 @@ function pushCard(cards, seen, front, back){
 }
 
 function cleanCardFront(front){
-  return toPlainEnglish(String(front || '')
+  const cleaned = toPlainEnglish(String(front || '')
     .replace(/^what\s+(is|does|happened in|happens in|did)\s+/i, '')
     .replace(/^why\s+is\s+/i, '')
     .replace(/\?+/g, '')
     .replace(/\b(explain|describe|define)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim());
+  if(genericTerms.has(cleaned.toLowerCase())) return '';
+  return cleaned;
 }
 
 function cleanCardBack(back){
@@ -464,12 +576,13 @@ async function cardsFromTransformers({ concepts, sections, sentences, cards, see
 
 export async function generateStudyCards(rawText){
   // Stage 1-2: extraction and normalization
-  const normalizedText = normalizeText(rawText);
+  const normalizedText = normalizeDocumentText(rawText);
   const paragraphs = dedupe(paragraphSplit(normalizedText));
   const text = paragraphs.join('\n\n');
   // Stage 3: sentence tokenization
   const sentences = sentenceSplit(text);
   // Stage 4: keyword extraction
+  const sectionsFromSlides = splitSlideSections(rawText);
   const sections = chunkByMeaning(paragraphs);
   const chunks = buildConceptChunks(paragraphs);
   const words = wordTokenize(text);
@@ -496,6 +609,7 @@ export async function generateStudyCards(rawText){
     transformerUsed = false;
   }
 
+  cardsFromStructuredSections({ sections:sectionsFromSlides, sentences, globalFreq:freq, cards, seen });
   if(cards.length < 12) buildRuleBasedCards({ definitions, chunks, keyConcepts, sentences, entities, cards, seen });
   cardsFromConceptGroups(conceptGroups, cards, seen);
 
